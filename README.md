@@ -5,6 +5,8 @@
 [![Hugging Face](https://img.shields.io/badge/HuggingFace-zzzz-orange?logo=huggingface&logoColor=white)](https://huggingface.co/zzzz)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
+CyberGym is a large-scale, high-quality cybersecurity evaluation framework designed to rigorously assess the capabilities of AI agents on real-world vulnerability analysis tasks.
+
 ## Installation
 Require python and docker environment.
 
@@ -113,11 +115,11 @@ git submodule update --init --recursive examples/agents
 Then check the instructions in the folder: [Example Agents](examples/agents/README.md)
 
 
-# Citation
+## Citation
 If you use this project in your research, please cite:
 ```
 TODO
 ```
 
-# License
+## License
 This project is licensed under the [Apache License 2.0](LICENSE).
