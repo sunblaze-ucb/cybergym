@@ -1,5 +1,9 @@
 # CyberGym: A Evaluating AI Agents’ Cybersecurity Capabilities with Real-World Vulnerabilities at Scale
 
+[![ArXiv](https://img.shields.io/badge/arXiv-xxxx.yyyy-b31b1b?style=flat&logo=arxiv&logoColor=white)](https://arxiv.org/abs/xxxx.yyyy)
+[![Hugging Face](https://img.shields.io/badge/HuggingFace-zzzz-orange?logo=huggingface&logoColor=white)](https://huggingface.co/zzzz)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 ## Installation
 Require python and docker environment.
 
@@ -103,6 +107,16 @@ python3 scripts/verify_agent_result.py \
 ### Example Agents
 The four example agents can be installed as:
 ```bash
-git submodule update --init --recursive
+git submodule update --init --recursive examples/agents
 ```
-Then check the instructions in separate folder: [Example Agents](examples/agents/README.md)
+Then check the instructions in the folder: [Example Agents](examples/agents/README.md)
+
+
+# Citation
+If you use this project in your research, please cite:
+```
+TODO
+```
+
+# License
+This project is licensed under the [Apache License 2.0](LICENSE).
