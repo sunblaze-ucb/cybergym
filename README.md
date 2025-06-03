@@ -1,5 +1,6 @@
 # CyberGym: A Evaluating AI Agents’ Cybersecurity Capabilities with Real-World Vulnerabilities at Scale
 
+[![Website](https://img.shields.io/badge/Website-cybergym.io-0a9396?style=flat&logo=Google-Chrome&logoColor=white)](https://cybergym.io)
 [![ArXiv](https://img.shields.io/badge/arXiv-xxxx.yyyy-b31b1b?style=flat&logo=arxiv&logoColor=white)](https://arxiv.org/abs/xxxx.yyyy)
 [![Hugging Face](https://img.shields.io/badge/HuggingFace-zzzz-orange?logo=huggingface&logoColor=white)](https://huggingface.co/zzzz)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
