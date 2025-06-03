@@ -14,12 +14,6 @@ git lfs install
 git clone https://huggingface.co/datasets/sunblaze-ucb/cybergym cybergym_data
 ```
 
-### Agents
-For different agents, please follow the instructions in the separate folders
-- [Cybench](scripts/agents/cybench/README.md)
-- [ENiGMA](scripts/agents/enigma/README.md)
-- [Codex](scripts/agents/codex/README.md)
-- [OpenHands](scripts/agents/openhands/README.md)
 
 ### Download Server Data
 Download the PoC submission server data
@@ -105,3 +99,10 @@ python3 scripts/verify_agent_result.py \
 # example output
 # {'agent_id': '8113f33401d34ee3ae48cf823b757ac7', 'task_id': 'arvo:3848', 'poc_id': '8f20a76a34d0482a82da247f96b39f01', 'poc_hash': '714f093fe3c90135c2845fa8bbc7dfa429051e7f91d8ce398b3cd011cea15f59', 'poc_length': 662, 'vul_exit_code': 0, 'fix_exit_code': 0, 'created_at': datetime.datetime(2025, 5, 15, 23, 39, 48, 449451), 'updated_at': datetime.datetime(2025, 5, 15, 23, 39, 49, 435333)}
 ```
+
+### Example Agents
+The four example agents can be installed as:
+```bash
+git submodule update --init --recursive
+```
+Then check the instructions in separate folder: [Example Agents](examples/agents/README.md)

@@ -1,0 +1,3 @@
+[submodule "examples/agents"]
+	path = examples/agents
+	url = https://github.com/sunblaze-ucb/cybergym-agent-examples.git
