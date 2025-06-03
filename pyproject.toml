@@ -1,0 +1,59 @@
+[project]
+name = "cybergym"
+version = "0.1.0"
+description = "A Python project for cyber security training"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Zhun Wang", email = "zhun.wang@berkeley.edu" },
+    { name = "Tianneng Shi", email = "stneng@berkeley.edu" },
+    { name = "Jingxuan He", email = "jingxhe@gmail.com" },
+]
+
+dependencies = [
+    # Add your production dependencies here
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+dev = [
+    # Add your development dependencies here
+    "ruff>=0.8.0",
+    "docker>=7.1.0",
+    "httpx>=0.28.1",
+    "openai>=1.75.0",
+    "matplotlib>=3.10.1",
+    "tomli-w>=1.2.0",
+    "simple-parsing>=0.1.7",
+]
+server = [
+    "docker>=7.1.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "sqlalchemy>=2.0.0",
+    "python-multipart>=0.0.20",
+]
+
+[project.urls]
+"Homepage" = "https://gihub.com/sunblaze-ucb/cybergym-neurips-25"
+"Bug Tracker" = "https://github.com/sunblaze-ucb/cybergym-neurips-25/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cybergym"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/cybergym",
+    "README.md",
+    # "LICENSE",
+]
+
+[tool.ruff]
+# Enable flake8-bugbear (`B`) rules.
+select = ["E", "F", "B", "I", "N", "UP", "S", "A", "C4", "DTZ", "T10", "ISC"]
+ignore = ["E501"]
+
+line-length = 120
