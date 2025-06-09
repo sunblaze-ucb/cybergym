@@ -118,7 +118,15 @@ Then check the instructions in the folder: [Example Agents](examples/agents/READ
 ## Citation
 If you use this project in your research, please cite:
 ```
-TODO
+@misc{wang2025cybergym,
+      title={CyberGym: Evaluating AI Agents' Cybersecurity Capabilities with Real-World Vulnerabilities at Scale}, 
+      author={Zhun Wang and Tianneng Shi and Jingxuan He and Matthew Cai and Jialin Zhang and Dawn Song},
+      year={2025},
+      eprint={2506.02548},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/2506.02548}, 
+}
 ```
 
 ## License
