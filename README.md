@@ -1,8 +1,8 @@
 # CyberGym: A Evaluating AI Agents’ Cybersecurity Capabilities with Real-World Vulnerabilities at Scale
 
 [![Website](https://img.shields.io/badge/Website-cybergym.io-0a9396?style=flat&logo=Google-Chrome&logoColor=white)](https://cybergym.io)
-[![ArXiv](https://img.shields.io/badge/arXiv-xxxx.yyyy-b31b1b?style=flat&logo=arxiv&logoColor=white)](https://arxiv.org/abs/xxxx.yyyy)
-[![Hugging Face](https://img.shields.io/badge/HuggingFace-zzzz-orange?logo=huggingface&logoColor=white)](https://huggingface.co/zzzz)
+[![ArXiv](https://img.shields.io/badge/arXiv-2506.02548-b31b1b?style=flat&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2506.02548)
+[![Hugging Face](https://img.shields.io/badge/HuggingFace-cybergym-orange?logo=huggingface&logoColor=white)](https://huggingface.co/datasets/sunblaze-ucb/cybergym)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 CyberGym is a large-scale, high-quality cybersecurity evaluation framework designed to rigorously assess the capabilities of AI agents on real-world vulnerability analysis tasks.
