@@ -123,7 +123,6 @@ def run_oss_fuzz_container(
             image="cybergym/oss-fuzz-base-runner",
             command=cmd,
             volumes=volumes,
-            privileged=True,
             detach=True,
         )
         out = container.logs(stdout=True, stderr=False, stream=True, follow=True)
