@@ -1,9 +1,3 @@
-"""
-Script to download a subset of datasets from the HuggingFace Hub and organize them into a local data directory structure for cybergym.
-
-Downloads task metadata and dataset files, then moves them into the specified directory, cleaning up cache files.
-"""
-
 import argparse
 from huggingface_hub import hf_hub_download
 import shutil
@@ -62,7 +56,9 @@ def main():
         for folder in folders:
             for file in file_names:
                 remote_path = f"data/{dataset}/{folder}/{file}"
-                local_path = os.path.join(data_dir, dataset, folder, file)
+                local_path = os.path.join(
+                    data_dir, "data", dataset, folder, file
+                )
                 print(f"[{dataset}] Downloading {remote_path} ...")
                 try:
                     src = hf_hub_download(
