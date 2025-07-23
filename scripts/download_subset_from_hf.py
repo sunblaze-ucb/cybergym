@@ -1,3 +1,9 @@
+"""
+Script to download a subset of datasets from the HuggingFace Hub and organize them into a local data directory structure for cybergym.
+
+Downloads task metadata and dataset files, then moves them into the specified directory, cleaning up cache files.
+"""
+
 import argparse
 from huggingface_hub import hf_hub_download
 import shutil
