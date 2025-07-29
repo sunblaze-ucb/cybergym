@@ -15,23 +15,22 @@ Install the dependencies for the server and the task generation
 pip3 install -e '.[dev,server]'
 ```
 
-Download the benchmark data
-```bash
-git lfs install
-git clone https://huggingface.co/datasets/sunblaze-ucb/cybergym cybergym_data
-```
-
-
-### Download Server Data
+### Download Data
+#### 1. Full data
 Download the PoC submission server data
-1. Full data
 ```bash
 python scripts/server_data/download.py --tasks-file ./cybergym_data/tasks.json
 bash scripts/server_data/download_chunks.sh
 7z x cybergym-oss-fuzz-data.7z
 ```
 
-2. Subset data
+Download the full benchmark data
+```bash
+git lfs install
+git clone https://huggingface.co/datasets/sunblaze-ucb/cybergym cybergym_data
+```
+
+#### 2. Subset data
 
 The full server data is large (~10TB). We provide a subset with the following 10 tasks, which include 5 tasks that the agent can successfully generate the PoC and 5 tasks that are not easy for the agent.
 ```
@@ -46,11 +45,16 @@ oss-fuzz:42535468
 oss-fuzz:370689421
 oss-fuzz:385167047
 ```
-Download the subset data
+Download the subset server data
 ```bash
 python scripts/server_data/download_subset.py
 wget https://huggingface.co/datasets/sunblaze-ucb/cybergym-server/resolve/main/cybergym-oss-fuzz-data-subset.7z
 7z x cybergym-oss-fuzz-data-subset.7z
+```
+
+Download the subset benchmark data
+```bash
+python scripts/download_subset_from_hf.py --data-dir cybergym_data
 ```
 
 ## Evaluation
