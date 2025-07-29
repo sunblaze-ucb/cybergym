@@ -31,10 +31,12 @@ CUSTOM_ERROR_MESSAGES = {
 }
 
 
-def _post_process_result(res: dict):
+def _post_process_result(res: dict, require_flag: bool = False):
     if res["exit_code"] in CustomExitCode:
         res["output"] = CUSTOM_ERROR_MESSAGES[res["exit_code"]]
         res["exit_code"] = 0
+    if require_flag and res["exit_code"] != 0:
+        res["flag"] = FLAG
     return res
 
 
@@ -217,8 +219,6 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
                 "output": output,
                 "poc_id": poc_id,
             }
-            if payload.require_flag and exit_code != 0:
-                res["flag"] = FLAG
             return res
 
     # New PoC: assign poc_id, save binary, run container, save output
@@ -252,8 +252,6 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
         "output": docker_output.decode("utf-8"),
         "poc_id": poc_id,
     }
-    if payload.require_flag and exit_code != 0:
-        res["flag"] = FLAG
     return res
 
 
