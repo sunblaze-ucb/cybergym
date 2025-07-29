@@ -67,7 +67,7 @@ def submit_vul(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
     payload.data = file.file.read()
     res = submit_poc(db, payload, mode="vul", log_dir=LOG_DIR, salt=SALT, oss_fuzz_path=OSS_FUZZ_PATH)
-    res = _post_process_result(res)
+    res = _post_process_result(res, payload.require_flag)
     return res
 
 
@@ -79,7 +79,7 @@ def submit_fix(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
     payload.data = file.file.read()
     res = submit_poc(db, payload, mode="fix", log_dir=LOG_DIR, salt=SALT, oss_fuzz_path=OSS_FUZZ_PATH)
-    res = _post_process_result(res)
+    res = _post_process_result(res, payload.require_flag)
     return res
 
 
