@@ -38,8 +38,8 @@ server = [
 ]
 
 [project.urls]
-"Homepage" = "https://gihub.com/sunblaze-ucb/cybergym-neurips-25"
-"Bug Tracker" = "https://github.com/sunblaze-ucb/cybergym-neurips-25/issues"
+"Homepage" = "https://github.com/sunblaze-ucb/cybergym"
+"Bug Tracker" = "https://github.com/sunblaze-ucb/cybergym/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cybergym"]
