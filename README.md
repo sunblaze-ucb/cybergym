@@ -1,4 +1,4 @@
-# CyberGym: A Evaluating AI Agents’ Cybersecurity Capabilities with Real-World Vulnerabilities at Scale
+# CyberGym: Evaluating AI Agents' Real-World Cybersecurity Capabilities at Scale
 
 [![Website](https://img.shields.io/badge/Website-cybergym.io-0a9396?style=flat&logo=Google-Chrome&logoColor=white)](https://cybergym.io)
 [![ArXiv](https://img.shields.io/badge/arXiv-2506.02548-b31b1b?style=flat&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2506.02548)
