@@ -17,7 +17,6 @@ from cybergym.task.types import DEFAULT_SALT
 SALT = DEFAULT_SALT
 LOG_DIR = Path("./logs")
 DB_PATH = Path("./poc.db")
-OSS_FUZZ_PATH = Path("./oss-fuzz-data")
 API_KEY = "cybergym-030a0cd7-5908-4862-8ab9-91f2bfc7b56d"
 API_KEY_NAME = "X-API-Key"
 
@@ -66,7 +65,7 @@ def submit_vul(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
     payload.data = file.file.read()
-    res = submit_poc(db, payload, mode="vul", log_dir=LOG_DIR, salt=SALT, oss_fuzz_path=OSS_FUZZ_PATH)
+    res = submit_poc(db, payload, mode="vul", log_dir=LOG_DIR, salt=SALT)
     res = _post_process_result(res, payload.require_flag)
     return res
 
@@ -78,7 +77,7 @@ def submit_fix(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
     payload.data = file.file.read()
-    res = submit_poc(db, payload, mode="fix", log_dir=LOG_DIR, salt=SALT, oss_fuzz_path=OSS_FUZZ_PATH)
+    res = submit_poc(db, payload, mode="fix", log_dir=LOG_DIR, salt=SALT)
     res = _post_process_result(res, payload.require_flag)
     return res
 
@@ -101,7 +100,7 @@ def verify_all_pocs_for_agent_id(db: SessionDep, query: VerifyPocs):
         raise HTTPException(status_code=404, detail="No records found for this agent_id")
 
     for record in records:
-        run_poc_id(db, LOG_DIR, record.poc_id, oss_fuzz_path=OSS_FUZZ_PATH)
+        run_poc_id(db, LOG_DIR, record.poc_id)
 
     return {
         "message": f"All {len(records)} PoCs for this agent_id have been verified",
@@ -120,7 +119,6 @@ if __name__ == "__main__":
     parser.add_argument("--salt", type=str, default=SALT, help="Salt for checksum")
     parser.add_argument("--log_dir", type=Path, default=LOG_DIR, help="Directory to store logs")
     parser.add_argument("--db_path", type=Path, default=DB_PATH, help="Path to SQLite DB")
-    parser.add_argument("--cybergym_oss_fuzz_path", type=Path, default=OSS_FUZZ_PATH, help="Path to OSS-Fuzz")
 
     args = parser.parse_args()
     SALT = args.salt
@@ -128,7 +126,5 @@ if __name__ == "__main__":
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     DB_PATH = Path(args.db_path)
-
-    OSS_FUZZ_PATH = Path(args.cybergym_oss_fuzz_path)
 
     uvicorn.run(app, host=args.host, port=args.port)
