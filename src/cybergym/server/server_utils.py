@@ -138,6 +138,11 @@ def run_container2(
                 "mode": "ro",
             },
         }
+        for file in (bin_dir / "out").iterdir():
+            volumes[str(file)] = {
+                "bind": f"/out/{file.name}",
+                "mode": "ro",
+            }
         cmd = ["env", "LD_LIBRARY_PATH=/out-libs", "/bin/bash", "/arvo"]
     elif subset == "oss-fuzz":
         if not is_integer(subid):
@@ -263,7 +268,7 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     return res
 
 
-def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False):
+def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, use2: bool = False):
     records = db.query(PoCRecord).filter_by(poc_id=poc_id).all()
     if len(records) != 1:
         raise HTTPException(status_code=500, detail=f"{len(records)} PoC records for same poc_id found")
@@ -276,7 +281,10 @@ def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False):
 
     if rerun or record.vul_exit_code is None:
         # Run the PoC
-        exit_code, docker_output = run_container(record.task_id, poc_path, "vul")
+        if use2:
+            exit_code, docker_output = run_container2(record.task_id, poc_path, "vul", data_dir=server_conf.binary_dir)
+        else:
+            exit_code, docker_output = run_container(record.task_id, poc_path, "vul")
         with open(poc_dir / "output.vul", "wb") as f:
             f.write(docker_output)
         update_poc_output(db, record, "vul", exit_code)
@@ -287,7 +295,10 @@ def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False):
 
     if rerun or record.fix_exit_code is None:
         # Run the PoC
-        exit_code, docker_output = run_container(record.task_id, poc_path, "fix")
+        if use2:
+            exit_code, docker_output = run_container2(record.task_id, poc_path, "fix", data_dir=server_conf.binary_dir)
+        else:
+            exit_code, docker_output = run_container(record.task_id, poc_path, "fix")
         with open(poc_dir / "output.fix", "wb") as f:
             f.write(docker_output)
         update_poc_output(db, record, "fix", exit_code)
