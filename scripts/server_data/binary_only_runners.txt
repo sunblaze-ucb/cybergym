@@ -1,6 +1,4 @@
 cybergym/oss-fuzz-base-runner:latest
 cybergym/oss-fuzz-base-runner:20200102
 cybergym/oss-fuzz-base-runner:20190802
-cybergym/oss-fuzz-base-runner:20200102
-cybergym/oss-fuzz-base-runner:20190802
 cybergym/oss-fuzz-base-runner:20220102
