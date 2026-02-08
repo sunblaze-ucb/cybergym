@@ -1,4 +1,6 @@
 import hashlib
+import json
+import os
 import shlex
 from enum import IntEnum
 from pathlib import Path
@@ -12,13 +14,14 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from cybergym.server.pocdb import PoCRecord, get_or_create_poc, get_poc_by_hash, update_poc_output
-from cybergym.server.types import Payload
+from cybergym.server.types import Payload, server_conf
 from cybergym.task.types import verify_task
 from cybergym.utils import get_arvo_id, get_oss_fuzz_id
 
 FLAG = "flag{3xpl017_cyb3r6ym}"
 DEFAULT_DOCKER_TIMEOUT = 30  # seconds for docker container to run
 DEFAULT_CMD_TIMEOUT = 10  # seconds for command to run
+DEFAULT_RUNNER_IMAGE = "cybergym/oss-fuzz-base-runner:latest"
 
 
 class CustomExitCode(IntEnum):
@@ -63,7 +66,6 @@ def is_integer(s):
         return False
 
 
-
 def run_container(
     task_id: str,
     poc_path: Path,
@@ -99,7 +101,87 @@ def run_container(
         if container:
             container.remove(force=True)
 
-    return exit_code, docker_output    
+    return exit_code, docker_output
+
+
+def run_container2(
+    task_id: str,
+    poc_path: Path,
+    mode: Literal["vul", "fix"],
+    data_dir: Path,
+    docker_timeout: int = DEFAULT_DOCKER_TIMEOUT,
+    cmd_timeout: int = DEFAULT_CMD_TIMEOUT,
+):
+    client = docker.from_env()
+    subset, subid = task_id.split(":")
+    cmd: list[str]
+    volumes: dict[str, dict[str, str]]
+    runner_image: str = DEFAULT_RUNNER_IMAGE
+    container = None
+
+    if subset == "arvo":
+        runner_image_file = data_dir / "arvo" / subid / "runner_image.txt"
+        if runner_image_file.exists():
+            runner_image = runner_image_file.read_text().strip()
+        bin_dir = data_dir / "arvo" / subid / mode
+        volumes = {
+            str(bin_dir / "arvo"): {
+                "bind": "/arvo",
+                "mode": "ro",
+            },
+            str(poc_path.absolute()): {
+                "bind": "/tmp/poc",  # noqa: S108
+                "mode": "ro",
+            },
+            str(bin_dir / "libs"): {
+                "bind": "/out-libs",
+                "mode": "ro",
+            },
+        }
+        cmd = ["env", "LD_LIBRARY_PATH=/out-libs", "/bin/bash", "/arvo"]
+    elif subset == "oss-fuzz":
+        if not is_integer(subid):
+            raise HTTPException(status_code=400, detail="Invalid task_id format for oss-fuzz")
+        oss_fuzz_path = data_dir / "oss-fuzz"
+        out_dir = oss_fuzz_path / f"{subid}-{mode}/out"
+        meta_file = oss_fuzz_path / f"{subid}-{mode}/metadata.json"
+        with open(meta_file) as f:
+            metadata = json.load(f)
+        fuzzer_name = metadata["fuzz_target"]
+        volumes = {str(poc_path.absolute()): {"bind": "/testcase", "mode": "ro"}}
+        for subfile in out_dir.iterdir():
+            host_path = str(subfile.absolute())
+            container_path = os.path.join("/out", subfile.name)
+            volumes[host_path] = {"bind": container_path, "mode": "ro"}
+        cmd = ["reproduce", fuzzer_name]
+    else:
+        raise HTTPException(status_code=400, detail="Invalid task_id format")
+
+    try:
+        container = client.containers.run(
+            image=runner_image,
+            command=["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} {shlex.join(cmd)} 2>&1"],
+            detach=True,
+            volumes=volumes,
+        )
+        out = container.logs(stdout=True, stderr=False, stream=True, follow=True)
+        exit_code = container.wait(timeout=docker_timeout)["StatusCode"]
+        if exit_code == 137:  # Process killed by timeout
+            exit_code = CustomExitCode.Timeout
+            docker_output = b""
+        else:
+            docker_output = b"".join(out)
+    except requests.exceptions.ReadTimeout:
+        raise HTTPException(status_code=500, detail="Timeout waiting for the program") from None
+    except DockerException as e:
+        raise HTTPException(status_code=500, detail=f"Running error: {e}") from None
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}") from None
+    finally:
+        if container:
+            container.remove(force=True)
+
+    return exit_code, docker_output
 
 
 def get_poc_storage_path(poc_id: str, log_dir: Path):
@@ -107,7 +189,7 @@ def get_poc_storage_path(poc_id: str, log_dir: Path):
     return log_dir / poc_id[:2] / poc_id[2:4] / poc_id
 
 
-def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str):
+def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str, use2: bool = False):
     # TODO: limit output size for return
     if not verify_task(payload.task_id, payload.agent_id, payload.checksum, salt=salt):
         raise HTTPException(status_code=400, detail="Invalid checksum")
@@ -162,7 +244,10 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     )
 
     # Run the PoC
-    exit_code, docker_output = run_container(payload.task_id, poc_bin_file, mode)
+    if use2:
+        exit_code, docker_output = run_container2(payload.task_id, poc_bin_file, mode, data_dir=server_conf.binary_dir)
+    else:
+        exit_code, docker_output = run_container(payload.task_id, poc_bin_file, mode)
     output_file = poc_dir / f"output.{mode}"
     with open(output_file, "wb") as f:
         f.write(docker_output)
