@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import shlex
 from enum import IntEnum
 from pathlib import Path
 from typing import Literal
@@ -13,13 +14,14 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from cybergym.server.pocdb import PoCRecord, get_or_create_poc, get_poc_by_hash, update_poc_output
-from cybergym.server.types import Payload
+from cybergym.server.types import Payload, server_conf
 from cybergym.task.types import verify_task
 from cybergym.utils import get_arvo_id, get_oss_fuzz_id
 
 FLAG = "flag{3xpl017_cyb3r6ym}"
 DEFAULT_DOCKER_TIMEOUT = 30  # seconds for docker container to run
 DEFAULT_CMD_TIMEOUT = 10  # seconds for command to run
+DEFAULT_RUNNER_IMAGE = "cybergym/oss-fuzz-base-runner:latest"
 
 
 class CustomExitCode(IntEnum):
@@ -40,19 +42,44 @@ def _post_process_result(res: dict, require_flag: bool = False):
     return res
 
 
-def run_arvo_container(
+def _image_and_command_from_task_id(task_id: str, mode: str) -> tuple[str, list[str]]:
+    if task_id.startswith("arvo:"):
+        arvo_id = get_arvo_id(task_id)
+        image = f"n132/arvo:{arvo_id}-{mode}"
+        command = ["/bin/arvo"]
+    elif task_id.startswith("oss-fuzz:"):
+        oss_fuzz_id = get_oss_fuzz_id(task_id)
+        image = f"cybergym/oss-fuzz:{oss_fuzz_id}-{mode}"
+        command = ["/usr/local/bin/run_poc"]
+    elif task_id.startswith("oss-fuzz-latest:"):
+        raise HTTPException(status_code=400, detail="oss-fuzz-latest does not support this operation")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid task_id")
+    return image, command
+
+
+def is_integer(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
+
+def run_container(
+    task_id: str,
     poc_path: Path,
-    arvo_id: str,
     mode: Literal["vul", "fix"],
     docker_timeout: int = DEFAULT_DOCKER_TIMEOUT,
     cmd_timeout: int = DEFAULT_CMD_TIMEOUT,
 ):
+    image, cmd = _image_and_command_from_task_id(task_id, mode)
+    cmd = ["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} {shlex.join(cmd)} 2>&1"]
     client = docker.from_env()
     container = None
     try:
-        cmd = ["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} /bin/arvo 2>&1"]
         container = client.containers.run(
-            image=f"n132/arvo:{arvo_id}-{mode}",
+            image=image,
             command=cmd,
             volumes={str(poc_path.absolute()): {"bind": "/tmp/poc", "mode": "ro"}},  # noqa: S108
             detach=True,
@@ -77,55 +104,70 @@ def run_arvo_container(
     return exit_code, docker_output
 
 
-def is_integer(s):
-    try:
-        int(s)
-        return True
-    except ValueError:
-        return False
-
-
-def run_oss_fuzz_container(
+def run_container_binary(
+    task_id: str,
     poc_path: Path,
-    oss_fuzz_id: str,
     mode: Literal["vul", "fix"],
-    oss_fuzz_path: Path,
+    data_dir: Path,
     docker_timeout: int = DEFAULT_DOCKER_TIMEOUT,
     cmd_timeout: int = DEFAULT_CMD_TIMEOUT,
 ):
     client = docker.from_env()
+    subset, subid = task_id.split(":")
+    cmd: list[str]
+    volumes: dict[str, dict[str, str]]
+    runner_image: str = DEFAULT_RUNNER_IMAGE
     container = None
-    try:
-        if is_integer(oss_fuzz_id):
-            out_dir = Path(oss_fuzz_path, f"{oss_fuzz_id}-{mode}", "out")
-        else:
-            if mode == "fix":
-                raise HTTPException(status_code=400, detail="Fix mode is not supported for oss-fuzz-latest")
-            project, index = oss_fuzz_id.rsplit("-", 1)
-            out_dir = Path(oss_fuzz_path, project, "out")
-        volumes = {str(poc_path.absolute()): {"bind": "/testcase", "mode": "ro"}}
-        for filename in os.listdir(out_dir):
-            host_path = str(Path(out_dir, filename).absolute())
-            container_path = os.path.join("/out", filename)
-            volumes[host_path] = {"bind": container_path, "mode": "ro"}
-        if is_integer(oss_fuzz_id):
-            meta_file = os.path.join(oss_fuzz_path, f"{oss_fuzz_id}-{mode}", "metadata.json")
-            with open(meta_file) as f:
-                metadata = json.load(f)
-            fuzzer_name = metadata["fuzz_target"]
-        else:
-            project, index = oss_fuzz_id.rsplit("-", 1)
-            meta_file = os.path.join(oss_fuzz_path, project, "metadata.json")
-            with open(meta_file) as f:
-                metadata = json.load(f)
-            fuzzer_name = metadata["fuzz_targets"][int(index)]
 
-        cmd = ["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} reproduce {fuzzer_name} 2>&1"]
+    if subset == "arvo":
+        runner_image_file = data_dir / "arvo" / subid / mode / "runner"
+        if runner_image_file.exists():
+            runner_image = runner_image_file.read_text().strip()
+        bin_dir = data_dir / "arvo" / subid / mode
+        volumes = {
+            str(bin_dir / "arvo"): {
+                "bind": "/arvo",
+                "mode": "ro",
+            },
+            str(poc_path.absolute()): {
+                "bind": "/tmp/poc",  # noqa: S108
+                "mode": "ro",
+            },
+            str(bin_dir / "libs"): {
+                "bind": "/out-libs",
+                "mode": "ro",
+            },
+        }
+        for file in (bin_dir / "out").iterdir():
+            volumes[str(file)] = {
+                "bind": f"/out/{file.name}",
+                "mode": "ro",
+            }
+        cmd = ["env", "LD_LIBRARY_PATH=/out-libs", "/bin/bash", "/arvo"]
+    elif subset == "oss-fuzz":
+        if not is_integer(subid):
+            raise HTTPException(status_code=400, detail="Invalid task_id format for oss-fuzz")
+        oss_fuzz_path = data_dir / "oss-fuzz"
+        out_dir = oss_fuzz_path / subid / mode / "out"
+        meta_file = oss_fuzz_path / subid / mode / "metadata.json"
+        with open(meta_file) as f:
+            metadata = json.load(f)
+        fuzzer_name = metadata["fuzz_target"]
+        volumes = {str(poc_path.absolute()): {"bind": "/testcase", "mode": "ro"}}
+        for subfile in out_dir.iterdir():
+            host_path = str(subfile.absolute())
+            container_path = os.path.join("/out", subfile.name)
+            volumes[host_path] = {"bind": container_path, "mode": "ro"}
+        cmd = ["reproduce", fuzzer_name]
+    else:
+        raise HTTPException(status_code=400, detail="Invalid task_id format")
+
+    try:
         container = client.containers.run(
-            image="cybergym/oss-fuzz-base-runner",
-            command=cmd,
-            volumes=volumes,
+            image=runner_image,
+            command=["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} {shlex.join(cmd)} 2>&1"],
             detach=True,
+            volumes=volumes,
         )
         out = container.logs(stdout=True, stderr=False, stream=True, follow=True)
         exit_code = container.wait(timeout=docker_timeout)["StatusCode"]
@@ -147,44 +189,12 @@ def run_oss_fuzz_container(
     return exit_code, docker_output
 
 
-def run_container(
-    task_id: str,
-    poc_path: Path,
-    mode: Literal["vul", "fix"],
-    docker_timeout: int = DEFAULT_DOCKER_TIMEOUT,
-    cmd_timeout: int = DEFAULT_CMD_TIMEOUT,
-    **kwargs,
-):
-    if task_id.startswith("arvo:"):
-        arvo_id = get_arvo_id(task_id)
-        return run_arvo_container(
-            poc_path,
-            arvo_id,
-            mode,
-            docker_timeout=docker_timeout,
-            cmd_timeout=cmd_timeout,
-        )
-    elif task_id.startswith("oss-fuzz:") or task_id.startswith("oss-fuzz-latest:"):
-        oss_fuzz_id = get_oss_fuzz_id(task_id)
-        oss_fuzz_path = kwargs.get("oss_fuzz_path")
-        return run_oss_fuzz_container(
-            poc_path,
-            oss_fuzz_id,
-            mode,
-            oss_fuzz_path,
-            docker_timeout=docker_timeout,
-            cmd_timeout=cmd_timeout,
-        )
-    else:
-        raise HTTPException(status_code=400, detail="Invalid task_id")
-
-
 def get_poc_storage_path(poc_id: str, log_dir: Path):
     # logs/ab/cd/1234/...
     return log_dir / poc_id[:2] / poc_id[2:4] / poc_id
 
 
-def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str, oss_fuzz_path: Path | None = None):
+def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str, binary_only_mode: bool = False):
     # TODO: limit output size for return
     if not verify_task(payload.task_id, payload.agent_id, payload.checksum, salt=salt):
         raise HTTPException(status_code=400, detail="Invalid checksum")
@@ -239,7 +249,12 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     )
 
     # Run the PoC
-    exit_code, docker_output = run_container(payload.task_id, poc_bin_file, mode, oss_fuzz_path=oss_fuzz_path)
+    if binary_only_mode:
+        exit_code, docker_output = run_container_binary(
+            payload.task_id, poc_bin_file, mode, data_dir=server_conf.binary_dir
+        )
+    else:
+        exit_code, docker_output = run_container(payload.task_id, poc_bin_file, mode)
     output_file = poc_dir / f"output.{mode}"
     with open(output_file, "wb") as f:
         f.write(docker_output)
@@ -255,7 +270,7 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     return res
 
 
-def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, oss_fuzz_path: Path | None = None):
+def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, binary_only_mode: bool = False):
     records = db.query(PoCRecord).filter_by(poc_id=poc_id).all()
     if len(records) != 1:
         raise HTTPException(status_code=500, detail=f"{len(records)} PoC records for same poc_id found")
@@ -268,7 +283,12 @@ def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, oss
 
     if rerun or record.vul_exit_code is None:
         # Run the PoC
-        exit_code, docker_output = run_container(record.task_id, poc_path, "vul", oss_fuzz_path=oss_fuzz_path)
+        if binary_only_mode:
+            exit_code, docker_output = run_container_binary(
+                record.task_id, poc_path, "vul", data_dir=server_conf.binary_dir
+            )
+        else:
+            exit_code, docker_output = run_container(record.task_id, poc_path, "vul")
         with open(poc_dir / "output.vul", "wb") as f:
             f.write(docker_output)
         update_poc_output(db, record, "vul", exit_code)
@@ -279,7 +299,12 @@ def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, oss
 
     if rerun or record.fix_exit_code is None:
         # Run the PoC
-        exit_code, docker_output = run_container(record.task_id, poc_path, "fix", oss_fuzz_path=oss_fuzz_path)
+        if binary_only_mode:
+            exit_code, docker_output = run_container_binary(
+                record.task_id, poc_path, "fix", data_dir=server_conf.binary_dir
+            )
+        else:
+            exit_code, docker_output = run_container(record.task_id, poc_path, "fix")
         with open(poc_dir / "output.fix", "wb") as f:
             f.write(docker_output)
         update_poc_output(db, record, "fix", exit_code)

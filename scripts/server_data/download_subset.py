@@ -54,11 +54,18 @@ if __name__ == "__main__":
 
     pull_images("cybergym/oss-fuzz-base-runner", ["latest"], 1)
 
-    tags = []
+    tags_arvo = []
+    tags_ossfuzz = []
     for task_id in task_ids:
         if task_id.split(":")[0] == "arvo":
             arvo_id = task_id.split(":")[-1]
-            tags.append(f"{arvo_id}-vul")
-            tags.append(f"{arvo_id}-fix")
-    if tags:
-        pull_images("n132/arvo", tags, args.max_workers)
+            tags_arvo.append(f"{arvo_id}-vul")
+            tags_arvo.append(f"{arvo_id}-fix")
+        if task_id.split(":")[0] == "oss-fuzz":
+            ossfuzz_id = task_id.split(":")[-1]
+            tags_ossfuzz.append(f"{ossfuzz_id}-vul")
+            tags_ossfuzz.append(f"{ossfuzz_id}-fix")
+    if tags_arvo:
+        pull_images("n132/arvo", tags_arvo, args.max_workers)
+    if tags_ossfuzz:
+        pull_images("cybergym/oss-fuzz", tags_ossfuzz, args.max_workers)

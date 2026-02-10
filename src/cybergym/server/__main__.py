@@ -11,15 +11,7 @@ from sqlalchemy.orm import Session
 
 from cybergym.server.pocdb import get_poc_by_hash, init_engine
 from cybergym.server.server_utils import _post_process_result, run_poc_id, submit_poc
-from cybergym.server.types import Payload, PocQuery, VerifyPocs
-from cybergym.task.types import DEFAULT_SALT
-
-SALT = DEFAULT_SALT
-LOG_DIR = Path("./logs")
-DB_PATH = Path("./poc.db")
-OSS_FUZZ_PATH = Path("./oss-fuzz-data")
-API_KEY = "cybergym-030a0cd7-5908-4862-8ab9-91f2bfc7b56d"
-API_KEY_NAME = "X-API-Key"
+from cybergym.server.types import Payload, PocQuery, VerifyPocs, server_conf
 
 engine: Engine = None
 
@@ -35,7 +27,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global engine
-    engine = init_engine(DB_PATH)
+    engine = init_engine(server_conf.db_path)
 
     yield
 
@@ -45,14 +37,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+api_key_header = APIKeyHeader(name=server_conf.api_key_name, auto_error=False)
 
 
 def get_api_key(api_key: str = Security(api_key_header)):
-    if api_key == API_KEY:
+    if api_key == server_conf.api_key:
         return api_key
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+
+def try_read_file(file: UploadFile, max_size_mb: int) -> bytes:
+    """Helper function to check file size."""
+    max_size_bytes = max_size_mb * 1024 * 1024
+    content = file.file.read(max_size_bytes + 1)
+    if len(content) > max_size_bytes:
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size allowed: {max_size_mb}MB")
+    return content
 
 
 public_router = APIRouter()
@@ -61,24 +62,46 @@ private_router = APIRouter(dependencies=[Depends(get_api_key)])
 
 @public_router.post("/submit-vul")
 def submit_vul(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated[UploadFile, File()]):
+    # Read and validate file size
+    try:
+        file_content = try_read_file(file, server_conf.max_file_size_mb)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Error reading file") from None
+
     try:
         payload = Payload.model_validate_json(metadata)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
-    payload.data = file.file.read()
-    res = submit_poc(db, payload, mode="vul", log_dir=LOG_DIR, salt=SALT, oss_fuzz_path=OSS_FUZZ_PATH)
+    payload.data = file_content
+    binary_only_mode = bool(server_conf.binary_dir)
+    res = submit_poc(
+        db, payload, mode="vul", log_dir=server_conf.log_dir, salt=server_conf.salt, binary_only_mode=binary_only_mode
+    )
     res = _post_process_result(res, payload.require_flag)
     return res
 
 
 @private_router.post("/submit-fix")
 def submit_fix(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated[UploadFile, File()]):
+    # Read and validate file size
+    try:
+        file_content = try_read_file(file, server_conf.max_file_size_mb)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Error reading file") from None
+
     try:
         payload = Payload.model_validate_json(metadata)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
-    payload.data = file.file.read()
-    res = submit_poc(db, payload, mode="fix", log_dir=LOG_DIR, salt=SALT, oss_fuzz_path=OSS_FUZZ_PATH)
+    payload.data = file_content
+    binary_only_mode = bool(server_conf.binary_dir)
+    res = submit_poc(
+        db, payload, mode="fix", log_dir=server_conf.log_dir, salt=server_conf.salt, binary_only_mode=binary_only_mode
+    )
     res = _post_process_result(res, payload.require_flag)
     return res
 
@@ -101,7 +124,7 @@ def verify_all_pocs_for_agent_id(db: SessionDep, query: VerifyPocs):
         raise HTTPException(status_code=404, detail="No records found for this agent_id")
 
     for record in records:
-        run_poc_id(db, LOG_DIR, record.poc_id, oss_fuzz_path=OSS_FUZZ_PATH)
+        run_poc_id(db, server_conf.log_dir, record.poc_id, binary_only_mode=bool(server_conf.binary_dir))
 
     return {
         "message": f"All {len(records)} PoCs for this agent_id have been verified",
@@ -117,18 +140,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CyberGym Server")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to run the server on")
     parser.add_argument("--port", type=int, default=8666, help="Port to run the server on")
-    parser.add_argument("--salt", type=str, default=SALT, help="Salt for checksum")
-    parser.add_argument("--log_dir", type=Path, default=LOG_DIR, help="Directory to store logs")
-    parser.add_argument("--db_path", type=Path, default=DB_PATH, help="Path to SQLite DB")
-    parser.add_argument("--cybergym_oss_fuzz_path", type=Path, default=OSS_FUZZ_PATH, help="Path to OSS-Fuzz")
+    parser.add_argument("--salt", type=str, default=server_conf.salt, help="Salt for checksum")
+    parser.add_argument("--log_dir", type=Path, default=server_conf.log_dir, help="Directory to store logs")
+    parser.add_argument("--db_path", type=Path, default=server_conf.db_path, help="Path to SQLite DB")
+    parser.add_argument(
+        "--binary_dir", type=Path, default=server_conf.binary_dir, help="Directory to store target binaries"
+    )
+    parser.add_argument(
+        "--max_file_size_mb", type=int, default=server_conf.max_file_size_mb, help="Maximum file size for uploads in MB"
+    )
 
     args = parser.parse_args()
-    SALT = args.salt
-    LOG_DIR = args.log_dir
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-    DB_PATH = Path(args.db_path)
-
-    OSS_FUZZ_PATH = Path(args.cybergym_oss_fuzz_path)
+    server_conf.salt = args.salt
+    server_conf.log_dir = args.log_dir
+    server_conf.log_dir.mkdir(parents=True, exist_ok=True)
+    server_conf.db_path = Path(args.db_path)
+    server_conf.binary_dir = args.binary_dir
 
     uvicorn.run(app, host=args.host, port=args.port)

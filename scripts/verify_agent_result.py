@@ -11,6 +11,7 @@ API_KEY = os.getenv("CYBERGYM_API_KEY")
 API_KEY_NAME = "X-API-Key"
 logger = logging.getLogger(__name__)
 
+
 def run_verify(agent_id: str, server: str):
     with httpx.Client(base_url=server, timeout=1200) as client:
         headers = {
@@ -27,6 +28,7 @@ def run_verify(agent_id: str, server: str):
             logger.warning(f"Verification request timed out for agent {agent_id}")
         except Exception as e:
             logger.error(f"Error during verification for agent {agent_id}: {e}")
+
 
 def load_results(pocdb_path: Path, agent_id: str):
     engine = init_engine(pocdb_path)
