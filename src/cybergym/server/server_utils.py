@@ -104,7 +104,7 @@ def run_container(
     return exit_code, docker_output
 
 
-def run_container2(
+def run_container_binary(
     task_id: str,
     poc_path: Path,
     mode: Literal["vul", "fix"],
@@ -120,7 +120,7 @@ def run_container2(
     container = None
 
     if subset == "arvo":
-        runner_image_file = data_dir / "arvo" / subid / "runner_image.txt"
+        runner_image_file = data_dir / "arvo" / subid / mode / "runner"
         if runner_image_file.exists():
             runner_image = runner_image_file.read_text().strip()
         bin_dir = data_dir / "arvo" / subid / mode
@@ -148,8 +148,8 @@ def run_container2(
         if not is_integer(subid):
             raise HTTPException(status_code=400, detail="Invalid task_id format for oss-fuzz")
         oss_fuzz_path = data_dir / "oss-fuzz"
-        out_dir = oss_fuzz_path / f"{subid}-{mode}/out"
-        meta_file = oss_fuzz_path / f"{subid}-{mode}/metadata.json"
+        out_dir = oss_fuzz_path / subid / mode / "out"
+        meta_file = oss_fuzz_path / subid / mode / "metadata.json"
         with open(meta_file) as f:
             metadata = json.load(f)
         fuzzer_name = metadata["fuzz_target"]
@@ -194,7 +194,7 @@ def get_poc_storage_path(poc_id: str, log_dir: Path):
     return log_dir / poc_id[:2] / poc_id[2:4] / poc_id
 
 
-def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str, use2: bool = False):
+def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str, binary_only_mode: bool = False):
     # TODO: limit output size for return
     if not verify_task(payload.task_id, payload.agent_id, payload.checksum, salt=salt):
         raise HTTPException(status_code=400, detail="Invalid checksum")
@@ -249,8 +249,10 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     )
 
     # Run the PoC
-    if use2:
-        exit_code, docker_output = run_container2(payload.task_id, poc_bin_file, mode, data_dir=server_conf.binary_dir)
+    if binary_only_mode:
+        exit_code, docker_output = run_container_binary(
+            payload.task_id, poc_bin_file, mode, data_dir=server_conf.binary_dir
+        )
     else:
         exit_code, docker_output = run_container(payload.task_id, poc_bin_file, mode)
     output_file = poc_dir / f"output.{mode}"
@@ -268,7 +270,7 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     return res
 
 
-def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, use2: bool = False):
+def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, binary_only_mode: bool = False):
     records = db.query(PoCRecord).filter_by(poc_id=poc_id).all()
     if len(records) != 1:
         raise HTTPException(status_code=500, detail=f"{len(records)} PoC records for same poc_id found")
@@ -281,8 +283,10 @@ def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, use
 
     if rerun or record.vul_exit_code is None:
         # Run the PoC
-        if use2:
-            exit_code, docker_output = run_container2(record.task_id, poc_path, "vul", data_dir=server_conf.binary_dir)
+        if binary_only_mode:
+            exit_code, docker_output = run_container_binary(
+                record.task_id, poc_path, "vul", data_dir=server_conf.binary_dir
+            )
         else:
             exit_code, docker_output = run_container(record.task_id, poc_path, "vul")
         with open(poc_dir / "output.vul", "wb") as f:
@@ -295,8 +299,10 @@ def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, use
 
     if rerun or record.fix_exit_code is None:
         # Run the PoC
-        if use2:
-            exit_code, docker_output = run_container2(record.task_id, poc_path, "fix", data_dir=server_conf.binary_dir)
+        if binary_only_mode:
+            exit_code, docker_output = run_container_binary(
+                record.task_id, poc_path, "fix", data_dir=server_conf.binary_dir
+            )
         else:
             exit_code, docker_output = run_container(record.task_id, poc_path, "fix")
         with open(poc_dir / "output.fix", "wb") as f:

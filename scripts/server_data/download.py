@@ -46,11 +46,18 @@ if __name__ == "__main__":
 
     with open(args.tasks_file) as f:
         tasks = json.load(f)
-    tags = []
+    tags_arvo = []
+    tags_ossfuzz = []
     for task in tasks:
         if task["task_id"].split(":")[0] == "arvo":
             arvo_id = task["task_id"].split(":")[-1]
-            tags.append(f"{arvo_id}-vul")
-            tags.append(f"{arvo_id}-fix")
-    if tags:
-        pull_images("n132/arvo", tags, args.max_workers)
+            tags_arvo.append(f"{arvo_id}-vul")
+            tags_arvo.append(f"{arvo_id}-fix")
+        if task["task_id"].split(":")[0] == "ossfuzz":
+            ossfuzz_id = task["task_id"].split(":")[-1]
+            tags_ossfuzz.append(f"{ossfuzz_id}-vul")
+            tags_ossfuzz.append(f"{ossfuzz_id}-fix")
+    if tags_arvo:
+        pull_images("n132/arvo", tags_arvo, args.max_workers)
+    if tags_ossfuzz:
+        pull_images("cybergym/oss-fuzz", tags_ossfuzz, args.max_workers)

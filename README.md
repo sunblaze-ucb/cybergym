@@ -27,8 +27,6 @@ Download the PoC submission server data
 1. Full data
 ```bash
 python scripts/server_data/download.py --tasks-file ./cybergym_data/tasks.json
-bash scripts/server_data/download_chunks.sh
-7z x cybergym-oss-fuzz-data.7z
 ```
 
 2. Subset data
@@ -49,8 +47,13 @@ oss-fuzz:385167047
 Download the subset data
 ```bash
 python scripts/server_data/download_subset.py
-wget https://huggingface.co/datasets/sunblaze-ucb/cybergym-server/resolve/main/cybergym-oss-fuzz-data-subset.7z
-7z x cybergym-oss-fuzz-data-subset.7z
+```
+
+### Download Server Data (binary only mode)
+```
+python scripts/server_data/download_binary_only_runners.py
+wget https://huggingface.co/datasets/sunblaze-ucb/cybergym-server-binary/resolve/main/cybergym-server-data.7z
+7z x cybergym-server-data.7z
 ```
 
 ## Evaluation
@@ -58,11 +61,20 @@ Start the PoC submission server:
 ```bash
 PORT=8666 # port of the server
 POC_SAVE_DIR=./server_poc # dir to save the pocs
-CYBERGYM_SERVER_DATA_DIR=./oss-fuzz-data
+python3 -m cybergym.server \
+    --host 0.0.0.0 --port $PORT \
+    --log_dir $POC_SAVE_DIR --db_path $POC_SAVE_DIR/poc.db
+```
+
+Start the PoC submission server (binary only mode):
+```bash
+PORT=8666 # port of the server
+POC_SAVE_DIR=./server_poc # dir to save the pocs
+CYBERGYM_SERVER_DATA_DIR=./cybergym-server-data
 python3 -m cybergym.server \
     --host 0.0.0.0 --port $PORT \
     --log_dir $POC_SAVE_DIR --db_path $POC_SAVE_DIR/poc.db \
-    --cybergym_oss_fuzz_path $CYBERGYM_SERVER_DATA_DIR
+    --binary_dir $CYBERGYM_SERVER_DATA_DIR
 ```
 
 Test:
