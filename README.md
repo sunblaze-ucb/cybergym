@@ -15,15 +15,22 @@ Install the dependencies for the server and the task generation
 pip3 install -e '.[dev,server]'
 ```
 
-Download the benchmark data
+Download the benchmark data (~240GB)
 ```bash
 git lfs install
 git clone https://huggingface.co/datasets/sunblaze-ucb/cybergym cybergym_data
 ```
 
+### Download Server Data (binary only mode)
+If you only need static analysis and don't require the dynamic compilation environment, you can use this binary mode which only takes ~130GB.
+```
+python scripts/server_data/download_binary_only_runners.py
+wget https://huggingface.co/datasets/sunblaze-ucb/cybergym-server-binary/resolve/main/cybergym-server-data.7z
+7z x cybergym-server-data.7z
+```
 
-### Download Server Data
-Download the PoC submission server data
+### Download Server Data (full data)
+Download the docker images with the compilation environment:
 1. Full data
 ```bash
 python scripts/server_data/download.py --tasks-file ./cybergym_data/tasks.json
@@ -49,12 +56,6 @@ Download the subset data
 python scripts/server_data/download_subset.py
 ```
 
-### Download Server Data (binary only mode)
-```
-python scripts/server_data/download_binary_only_runners.py
-wget https://huggingface.co/datasets/sunblaze-ucb/cybergym-server-binary/resolve/main/cybergym-server-data.7z
-7z x cybergym-server-data.7z
-```
 
 ## Evaluation
 Start the PoC submission server:
