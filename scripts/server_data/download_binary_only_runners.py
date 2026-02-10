@@ -1,8 +1,6 @@
-import argparse
-import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import docker
-import json
 
 client = docker.from_env()
 

@@ -1,8 +1,8 @@
 import argparse
-import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import docker
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import docker
 
 client = docker.from_env()
 
@@ -53,7 +53,7 @@ if __name__ == "__main__":
             arvo_id = task["task_id"].split(":")[-1]
             tags_arvo.append(f"{arvo_id}-vul")
             tags_arvo.append(f"{arvo_id}-fix")
-        if task["task_id"].split(":")[0] == "ossfuzz":
+        if task["task_id"].split(":")[0] == "oss-fuzz":
             ossfuzz_id = task["task_id"].split(":")[-1]
             tags_ossfuzz.append(f"{ossfuzz_id}-vul")
             tags_ossfuzz.append(f"{ossfuzz_id}-fix")
