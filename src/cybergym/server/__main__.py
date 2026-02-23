@@ -157,5 +157,6 @@ if __name__ == "__main__":
     server_conf.log_dir.mkdir(parents=True, exist_ok=True)
     server_conf.db_path = Path(args.db_path)
     server_conf.binary_dir = args.binary_dir
+    server_conf.max_file_size_mb = args.max_file_size_mb
 
     uvicorn.run(app, host=args.host, port=args.port)
