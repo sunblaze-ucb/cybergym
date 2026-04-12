@@ -81,6 +81,7 @@ def run_container(
         container = client.containers.run(
             image=image,
             command=cmd,
+            network_mode="none",
             volumes={str(poc_path.absolute()): {"bind": "/tmp/poc", "mode": "ro"}},  # noqa: S108
             detach=True,
         )
@@ -167,6 +168,7 @@ def run_container_binary(
             image=runner_image,
             command=["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} {shlex.join(cmd)} 2>&1"],
             detach=True,
+            network_mode="none",
             volumes=volumes,
         )
         out = container.logs(stdout=True, stderr=False, stream=True, follow=True)
