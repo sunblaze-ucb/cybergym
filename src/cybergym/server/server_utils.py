@@ -78,13 +78,16 @@ def run_container(
     client = docker.from_env()
     container = None
     try:
-        container = client.containers.run(
+        # Split create + start so we always have a container ref for cleanup.
+        # containers.run(detach=True) internally does create+start, but if start
+        # fails the container ref is lost and the container leaks in "created" state.
+        container = client.containers.create(
             image=image,
             command=cmd,
             network_mode="none",
             volumes={str(poc_path.absolute()): {"bind": "/tmp/poc", "mode": "ro"}},  # noqa: S108
-            detach=True,
         )
+        container.start()
         out = container.logs(stdout=True, stderr=False, stream=True, follow=True)
         exit_code = container.wait(timeout=docker_timeout)["StatusCode"]
         if exit_code == 137:  # Process killed by timeout
@@ -164,13 +167,13 @@ def run_container_binary(
         raise HTTPException(status_code=400, detail="Invalid task_id format")
 
     try:
-        container = client.containers.run(
+        container = client.containers.create(
             image=runner_image,
             command=["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} {shlex.join(cmd)} 2>&1"],
-            detach=True,
             network_mode="none",
             volumes=volumes,
         )
+        container.start()
         out = container.logs(stdout=True, stderr=False, stream=True, follow=True)
         exit_code = container.wait(timeout=docker_timeout)["StatusCode"]
         if exit_code == 137:  # Process killed by timeout
