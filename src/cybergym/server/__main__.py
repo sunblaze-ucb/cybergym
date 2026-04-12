@@ -10,10 +10,12 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from cybergym.server.pocdb import get_poc_by_hash, init_engine
+from cybergym.server.rate_limiter import RateLimiter
 from cybergym.server.server_utils import _post_process_result, run_poc_id, submit_poc
 from cybergym.server.types import Payload, PocQuery, VerifyPocs, server_conf
 
 engine: Engine = None
+rate_limiter: RateLimiter = None
 
 
 def get_session():
@@ -26,8 +28,11 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global engine
+    global engine, rate_limiter
     engine = init_engine(server_conf.db_path)
+    rate_limiter = RateLimiter(
+        max_requests=server_conf.rate_limit_max_requests, window_seconds=server_conf.rate_limit_window_seconds
+    )
 
     yield
 
@@ -74,6 +79,9 @@ def submit_vul(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated
         payload = Payload.model_validate_json(metadata)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
+
+    rate_limiter.check(payload.agent_id)
+
     payload.data = file_content
     binary_only_mode = bool(server_conf.binary_dir)
     res = submit_poc(
@@ -149,6 +157,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_file_size_mb", type=int, default=server_conf.max_file_size_mb, help="Maximum file size for uploads in MB"
     )
+    parser.add_argument(
+        "--rate_limit_max_requests",
+        type=int,
+        default=server_conf.rate_limit_max_requests,
+        help="Max requests per agent per window",
+    )
+    parser.add_argument(
+        "--rate_limit_window_seconds",
+        type=int,
+        default=server_conf.rate_limit_window_seconds,
+        help="Rate limit window in seconds",
+    )
 
     args = parser.parse_args()
 
@@ -158,5 +178,7 @@ if __name__ == "__main__":
     server_conf.db_path = Path(args.db_path)
     server_conf.binary_dir = args.binary_dir
     server_conf.max_file_size_mb = args.max_file_size_mb
+    server_conf.rate_limit_max_requests = args.rate_limit_max_requests
+    server_conf.rate_limit_window_seconds = args.rate_limit_window_seconds
 
     uvicorn.run(app, host=args.host, port=args.port)

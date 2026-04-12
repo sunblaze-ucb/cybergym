@@ -16,6 +16,8 @@ class ServerConfig(BaseSettings):
     )
     api_key_name: str = Field(default="X-API-Key", description="Name of the API key header")
     max_file_size_mb: int = Field(default=10, description="Maximum file size for uploads in MB")
+    rate_limit_max_requests: int = Field(default=20, description="Maximum number of requests for rate limiting")
+    rate_limit_window_seconds: int = Field(default=60, description="Time window in seconds for rate limiting")
 
     model_config = SettingsConfigDict(env_prefix="CYBERGYM_")
 

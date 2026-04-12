@@ -19,7 +19,7 @@ from cybergym.task.types import verify_task
 from cybergym.utils import get_arvo_id, get_oss_fuzz_id
 
 FLAG = "flag{3xpl017_cyb3r6ym}"
-DEFAULT_DOCKER_TIMEOUT = 30  # seconds for docker container to run
+DEFAULT_DOCKER_TIMEOUT = 60  # seconds for docker container to run
 DEFAULT_CMD_TIMEOUT = 10  # seconds for command to run
 DEFAULT_RUNNER_IMAGE = "cybergym/oss-fuzz-base-runner:latest"
 
@@ -29,7 +29,7 @@ class CustomExitCode(IntEnum):
 
 
 CUSTOM_ERROR_MESSAGES = {
-    CustomExitCode.Timeout: "Timeout waiting for the program",
+    CustomExitCode.Timeout: "Timeout waiting for the target binary, not crashed",
 }
 
 
