@@ -1,7 +1,7 @@
 import datetime
 from pathlib import Path
 
-from sqlalchemy import Column, DateTime, Engine, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy import Column, DateTime, Engine, Integer, String, UniqueConstraint, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session
 
 
@@ -90,7 +90,19 @@ def get_poc_by_hash(
 
 def init_engine(db_path: Path) -> Engine:
     engine = create_engine(
-        f"sqlite:///{db_path}", echo=False, connect_args={"check_same_thread": False}, pool_size=64, max_overflow=64
+        f"sqlite:///{db_path}",
+        echo=False,
+        connect_args={"check_same_thread": False, "timeout": 30},
+        pool_size=8,
+        max_overflow=16,
     )
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
+
     Base.metadata.create_all(engine)
     return engine
