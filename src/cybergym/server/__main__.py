@@ -13,6 +13,7 @@ from cybergym.server.pocdb import get_poc_by_hash, init_engine
 from cybergym.server.rate_limiter import RateLimiter
 from cybergym.server.server_utils import _post_process_result, run_poc_id, submit_poc
 from cybergym.server.types import Payload, PocQuery, VerifyPocs, server_conf
+from cybergym.task.mask import load_mask_map
 
 engine: Engine = None
 rate_limiter: RateLimiter = None
@@ -149,6 +150,9 @@ if __name__ == "__main__":
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to run the server on")
     parser.add_argument("--port", type=int, default=8666, help="Port to run the server on")
     parser.add_argument("--salt", type=str, default=server_conf.salt, help="Salt for checksum")
+    parser.add_argument(
+        "--mask_map_path", type=Path, default=server_conf.mask_map_path, help="Path to task ID mask mapping JSON file"
+    )
     parser.add_argument("--log_dir", type=Path, default=server_conf.log_dir, help="Directory to store logs")
     parser.add_argument("--db_path", type=Path, default=server_conf.db_path, help="Path to SQLite DB")
     parser.add_argument(
@@ -173,6 +177,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     server_conf.salt = args.salt
+    server_conf.mask_map_path = args.mask_map_path
     server_conf.log_dir = args.log_dir
     server_conf.log_dir.mkdir(parents=True, exist_ok=True)
     server_conf.db_path = Path(args.db_path)
@@ -180,5 +185,8 @@ if __name__ == "__main__":
     server_conf.max_file_size_mb = args.max_file_size_mb
     server_conf.rate_limit_max_requests = args.rate_limit_max_requests
     server_conf.rate_limit_window_seconds = args.rate_limit_window_seconds
+
+    if server_conf.mask_map_path:
+        load_mask_map(server_conf.mask_map_path)
 
     uvicorn.run(app, host=args.host, port=args.port)

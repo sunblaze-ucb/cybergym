@@ -39,6 +39,7 @@ class TaskConfig(BaseModel):
     server: str
     difficulty: TaskDifficulty
     salt: str = DEFAULT_SALT
+    mask_map_path: Path | None = None
     agent_id: str | None = None
     with_flag: bool = False
 

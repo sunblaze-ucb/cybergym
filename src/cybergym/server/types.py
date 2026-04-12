@@ -8,6 +8,7 @@ from cybergym.task.types import DEFAULT_SALT
 
 class ServerConfig(BaseSettings):
     salt: str = Field(default=DEFAULT_SALT, description="Salt for checksum")
+    mask_map_path: Path | None = Field(default=None, description="Path to task ID mask mapping JSON file")
     log_dir: Path = Field(default=Path("./logs"), description="Directory to store logs")
     db_path: Path = Field(default=Path("./poc.db"), description="Path to SQLite DB")
     binary_dir: Path | None = Field(default=None, description="Directory to store target binaries")

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from cybergym.server.pocdb import PoCRecord, get_or_create_poc, get_poc_by_hash, update_poc_output
 from cybergym.server.types import Payload, server_conf
+from cybergym.task.mask import _reverse_map, unmask_task_id
 from cybergym.task.types import verify_task
 from cybergym.utils import get_arvo_id, get_oss_fuzz_id
 
@@ -201,16 +202,26 @@ def get_poc_storage_path(poc_id: str, log_dir: Path):
 
 def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str, binary_only_mode: bool = False):
     # TODO: limit output size for return
+    # Verify checksum with masked task_id (agent computed checksum with what it sees)
     if not verify_task(payload.task_id, payload.agent_id, payload.checksum, salt=salt):
         raise HTTPException(status_code=400, detail="Invalid checksum")
+
+    # Unmask to get real task_id for internal use (container, DB)
+    if _reverse_map:
+        try:
+            real_task_id = unmask_task_id(payload.task_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid task_id") from None
+    else:
+        real_task_id = payload.task_id
 
     decoded = payload.data
 
     # Compute hash of PoC
     poc_hash = hashlib.sha256(decoded).hexdigest()
 
-    # Check if PoC already exists for this agent/task/hash
-    existings = get_poc_by_hash(db, payload.agent_id, payload.task_id, poc_hash)
+    # Check if PoC already exists for this agent/task/hash (DB stores real task_id)
+    existings = get_poc_by_hash(db, payload.agent_id, real_task_id, poc_hash)
     poc_id = uuid4().hex
     if existings:
         if len(existings) > 1:
@@ -229,7 +240,7 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
             except Exception:
                 output = ""
             res = {
-                "task_id": payload.task_id,
+                "task_id": payload.task_id,  # return masked to agent
                 "exit_code": exit_code,
                 "output": output,
                 "poc_id": poc_id,
@@ -243,23 +254,23 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     with open(poc_bin_file, "wb") as f:
         f.write(decoded)
 
-    # Insert or update DB record
+    # Insert or update DB record (store real task_id for admin analysis)
     record = get_or_create_poc(
         db,
         agent_id=payload.agent_id,
-        task_id=payload.task_id,
+        task_id=real_task_id,
         poc_id=poc_id,
         poc_hash=poc_hash,
         poc_length=len(decoded),
     )
 
-    # Run the PoC
+    # Run the PoC with real task_id (resolves docker image)
     if binary_only_mode:
         exit_code, docker_output = run_container_binary(
-            payload.task_id, poc_bin_file, mode, data_dir=server_conf.binary_dir
+            real_task_id, poc_bin_file, mode, data_dir=server_conf.binary_dir
         )
     else:
-        exit_code, docker_output = run_container(payload.task_id, poc_bin_file, mode)
+        exit_code, docker_output = run_container(real_task_id, poc_bin_file, mode)
     output_file = poc_dir / f"output.{mode}"
     with open(output_file, "wb") as f:
         f.write(docker_output)
@@ -267,7 +278,7 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     update_poc_output(db, record, mode, exit_code)
 
     res = {
-        "task_id": payload.task_id,
+        "task_id": payload.task_id,  # return masked to agent
         "exit_code": exit_code,
         "output": docker_output.decode("utf-8"),
         "poc_id": poc_id,

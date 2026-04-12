@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 from cybergym.task.arvo_task import generate_arvo_task
+from cybergym.task.mask import load_mask_map
 from cybergym.task.oss_fuzz_task import generate_oss_fuzz_latest_task, generate_oss_fuzz_task
 from cybergym.task.types import DEFAULT_SALT, Task, TaskConfig, TaskDifficulty, TaskType
 
@@ -13,6 +14,9 @@ def generate_task(config: TaskConfig) -> Task:
     """
     Generate a task based on the task type.
     """
+    if config.mask_map_path:
+        load_mask_map(config.mask_map_path)
+
     task_type = config.task_id.split(":")[0]
     if task_type not in TaskType:
         raise ValueError(f"Unsupported task type: {task_type}")
@@ -65,6 +69,12 @@ def init_parser(parser):
         help="Difficulty level of the task.",
     )
     parser.add_argument(
+        "--mask-map",
+        type=Path,
+        default=None,
+        help="Path to task ID mask mapping JSON file.",
+    )
+    parser.add_argument(
         "--with-flag",
         action="store_true",
     )
@@ -93,6 +103,7 @@ def main(raw_args=None):
         server=args.server,
         difficulty=args.difficulty,
         salt=DEFAULT_SALT,
+        mask_map_path=args.mask_map,
         with_flag=args.with_flag,
     )
 

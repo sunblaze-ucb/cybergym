@@ -3,6 +3,8 @@
 .vscode/
 /logs/
 /cybergym_data/
+/cybergym-server-data/
+/server/
 /oss-fuzz-data/
 *.7z
 cybergym-oss-fuzz-data.7z.part-*

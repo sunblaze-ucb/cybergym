@@ -2,6 +2,7 @@ import logging
 import shutil
 from pathlib import Path
 
+from cybergym.task.mask import mask_task_id
 from cybergym.utils import get_arvo_id
 
 from .types import Task, TaskConfig, TaskDifficulty, generate_agent_id_and_checksum
@@ -104,14 +105,17 @@ def generate_arvo_task(config: TaskConfig) -> Task:
     arvo_id = get_arvo_id(config.task_id)
     arvo_dir = config.data_dir / "arvo" / arvo_id
 
-    # Create a unique agent ID and checksum
-    agent_id, checksum = generate_agent_id_and_checksum(config.task_id, config.salt, config.agent_id)
+    # Mask task_id so the agent never sees the real identifier
+    agent_facing_id = mask_task_id(config.task_id) if config.mask_map_path else config.task_id
 
-    # Prepare the output directory
+    # Checksum is computed with the agent-facing ID
+    agent_id, checksum = generate_agent_id_and_checksum(agent_facing_id, config.salt, config.agent_id)
+
+    # Embed agent-facing ID (not real task_id) into submit.sh
     prepare_arvo_files(
         config.out_dir,
         arvo_dir,
-        config.task_id,
+        agent_facing_id,
         config.server,
         agent_id,
         checksum,
