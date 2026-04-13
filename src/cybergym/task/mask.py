@@ -8,10 +8,13 @@ _reverse_map: dict[str, str] = {}  # masked_id -> real_task_id
 
 def load_mask_map(path: Path):
     """Load a task ID mapping from a JSON file."""
-    global _forward_map, _reverse_map
     with open(path) as f:
-        _forward_map = json.load(f)
-    _reverse_map = {v: k for k, v in _forward_map.items()}
+        data = json.load(f)
+    # Mutate in-place so existing references (from `from mask import _reverse_map`) stay valid
+    _forward_map.clear()
+    _forward_map.update(data)
+    _reverse_map.clear()
+    _reverse_map.update({v: k for k, v in data.items()})
 
 
 def mask_task_id(task_id: str) -> str:
