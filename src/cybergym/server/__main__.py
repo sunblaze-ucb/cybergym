@@ -1,11 +1,12 @@
 import argparse
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 import time
 from typing import Annotated
 
 import uvicorn
-from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Security, UploadFile, status
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, Security, UploadFile, status
 from fastapi.security import APIKeyHeader
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
@@ -15,6 +16,49 @@ from cybergym.server.rate_limiter import RateLimiter
 from cybergym.server.server_utils import _post_process_result, run_poc_id, submit_poc
 from cybergym.server.types import Payload, PocQuery, VerifyPocs, server_conf
 from cybergym.task.mask import load_mask_map
+
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+LOG_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": LOG_FORMAT,
+            "datefmt": LOG_DATE_FORMAT,
+        },
+        "access": {
+            "format": '%(asctime)s [%(levelname)s] %(name)s: %(client_addr)s - "%(request_line)s" %(status_code)s',
+            "datefmt": LOG_DATE_FORMAT,
+        },
+    },
+    "handlers": {
+        "default": {
+            "class": "logging.StreamHandler",
+            "formatter": "default",
+            "stream": "ext://sys.stderr",
+        },
+        "access": {
+            "class": "logging.StreamHandler",
+            "formatter": "access",
+            "stream": "ext://sys.stdout",
+        },
+    },
+    "loggers": {
+        "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "uvicorn.error": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
+        "cybergym.server": {"handlers": ["default"], "level": "INFO", "propagate": False},
+    },
+}
+
+logger = logging.getLogger("cybergym.server")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 
 engine: Engine = None
 rate_limiter: RateLimiter = None
@@ -31,18 +75,37 @@ SessionDep = Annotated[Session, Depends(get_session)]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global engine, rate_limiter
+    logger.info("Starting server: db_path=%s, log_dir=%s", server_conf.db_path, server_conf.log_dir)
     engine = init_engine(server_conf.db_path)
     rate_limiter = RateLimiter(
         max_requests=server_conf.rate_limit_max_requests, window_seconds=server_conf.rate_limit_window_seconds
     )
+    logger.info("Server ready")
 
     yield
 
+    logger.info("Shutting down server")
     if engine:
         engine.dispose()
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "%s %s -> %d (%.1fms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed_ms,
+    )
+    return response
+
 
 api_key_header = APIKeyHeader(name=server_conf.api_key_name, auto_error=False)
 
@@ -75,12 +138,16 @@ def submit_vul(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated
     except HTTPException:
         raise
     except Exception:
+        logger.warning("Failed to read uploaded file")
         raise HTTPException(status_code=400, detail="Error reading file") from None
 
     try:
         payload = Payload.model_validate_json(metadata)
     except Exception:
+        logger.warning("Invalid metadata in submit-vul request")
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
+
+    logger.info("submit-vul: agent=%s task=%s file_size=%d", payload.agent_id, payload.task_id, len(file_content))
 
     rate_limiter.check(payload.agent_id)
 
@@ -90,6 +157,7 @@ def submit_vul(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated
         db, payload, mode="vul", log_dir=server_conf.log_dir, salt=server_conf.salt, binary_only_mode=binary_only_mode
     )
     res = _post_process_result(res, payload.require_flag)
+    logger.info("submit-vul done: agent=%s task=%s exit_code=%s", payload.agent_id, payload.task_id, res["exit_code"])
     return res
 
 
@@ -101,23 +169,30 @@ def submit_fix(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated
     except HTTPException:
         raise
     except Exception:
+        logger.warning("Failed to read uploaded file")
         raise HTTPException(status_code=400, detail="Error reading file") from None
 
     try:
         payload = Payload.model_validate_json(metadata)
     except Exception:
+        logger.warning("Invalid metadata in submit-fix request")
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
+
+    logger.info("submit-fix: agent=%s task=%s file_size=%d", payload.agent_id, payload.task_id, len(file_content))
+
     payload.data = file_content
     binary_only_mode = bool(server_conf.binary_dir)
     res = submit_poc(
         db, payload, mode="fix", log_dir=server_conf.log_dir, salt=server_conf.salt, binary_only_mode=binary_only_mode
     )
     res = _post_process_result(res, payload.require_flag)
+    logger.info("submit-fix done: agent=%s task=%s exit_code=%s", payload.agent_id, payload.task_id, res["exit_code"])
     return res
 
 
 @private_router.post("/query-poc")
 def query_db(db: SessionDep, query: PocQuery):
+    logger.info("query-poc: agent=%s task=%s", query.agent_id, query.task_id)
     records = get_poc_by_hash(db, query.agent_id, query.task_id)
     if not records:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -129,16 +204,19 @@ def verify_all_pocs_for_agent_id(db: SessionDep, query: VerifyPocs):
     """
     Verify all PoCs for a given agent_id.
     """
+    logger.info("verify-agent-pocs: agent=%s", query.agent_id)
     records = get_poc_by_hash(db, query.agent_id)
     if not records:
         raise HTTPException(status_code=404, detail="No records found for this agent_id")
 
     for record in records:
         if record.vul_exit_code in [0, 300]:
-            continue # Skip PoCs that did not trigger a crash
+            continue  # Skip PoCs that did not trigger a crash
+        logger.info("Re-verifying poc_id=%s task=%s", record.poc_id, record.task_id)
         run_poc_id(db, server_conf.log_dir, record.poc_id, binary_only_mode=bool(server_conf.binary_dir))
-        time.sleep(0.5) # Small delay to avoid overwhelming the docker
+        time.sleep(0.5)  # Small delay to avoid overwhelming the docker
 
+    logger.info("verify-agent-pocs done: agent=%s count=%d", query.agent_id, len(records))
     return {
         "message": f"All {len(records)} PoCs for this agent_id have been verified",
         "poc_ids": [record.poc_id for record in records],
@@ -193,4 +271,4 @@ if __name__ == "__main__":
     if server_conf.mask_map_path:
         load_mask_map(server_conf.mask_map_path)
 
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port, log_config=LOG_CONFIG)
