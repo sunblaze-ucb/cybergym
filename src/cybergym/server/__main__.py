@@ -20,38 +20,39 @@ from cybergym.task.mask import load_mask_map
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-LOG_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "format": LOG_FORMAT,
-            "datefmt": LOG_DATE_FORMAT,
+
+def make_log_config(log_file: str) -> dict:
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": LOG_FORMAT,
+                "datefmt": LOG_DATE_FORMAT,
+            },
         },
-        "access": {
-            "format": '%(asctime)s [%(levelname)s] %(name)s: %(client_addr)s - "%(request_line)s" %(status_code)s',
-            "datefmt": LOG_DATE_FORMAT,
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+                "stream": "ext://sys.stderr",
+            },
+            "file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "default",
+                "filename": log_file,
+                "maxBytes": 10 * 1024 * 1024,  # 10 MB
+                "backupCount": 5,
+            },
         },
-    },
-    "handlers": {
-        "default": {
-            "class": "logging.StreamHandler",
-            "formatter": "default",
-            "stream": "ext://sys.stderr",
+        "loggers": {
+            "uvicorn": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
+            "uvicorn.error": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
+            "uvicorn.access": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
+            "cybergym.server": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
         },
-        "access": {
-            "class": "logging.StreamHandler",
-            "formatter": "access",
-            "stream": "ext://sys.stdout",
-        },
-    },
-    "loggers": {
-        "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
-        "uvicorn.error": {"handlers": ["default"], "level": "INFO", "propagate": False},
-        "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
-        "cybergym.server": {"handlers": ["default"], "level": "INFO", "propagate": False},
-    },
-}
+    }
+
 
 logger = logging.getLogger("cybergym.server")
 if not logger.handlers:
@@ -271,4 +272,6 @@ if __name__ == "__main__":
     if server_conf.mask_map_path:
         load_mask_map(server_conf.mask_map_path)
 
-    uvicorn.run(app, host=args.host, port=args.port, log_config=LOG_CONFIG)
+    uvicorn.run(
+        app, host=args.host, port=args.port, log_config=make_log_config(str(server_conf.log_dir / "server.log"))
+    )
