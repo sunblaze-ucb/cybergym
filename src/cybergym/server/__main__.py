@@ -1,6 +1,7 @@
 import argparse
 from contextlib import asynccontextmanager
 from pathlib import Path
+import time
 from typing import Annotated
 
 import uvicorn
@@ -133,7 +134,10 @@ def verify_all_pocs_for_agent_id(db: SessionDep, query: VerifyPocs):
         raise HTTPException(status_code=404, detail="No records found for this agent_id")
 
     for record in records:
+        if record.vul_exit_code in [0, 300]:
+            continue # Skip PoCs that did not trigger a crash
         run_poc_id(db, server_conf.log_dir, record.poc_id, binary_only_mode=bool(server_conf.binary_dir))
+        time.sleep(0.5) # Small delay to avoid overwhelming the docker
 
     return {
         "message": f"All {len(records)} PoCs for this agent_id have been verified",
