@@ -13,9 +13,9 @@ Architecture
 
 Usage
 -----
-    from cybergym.firewall import ProxyManager, load_allowlist
+    from cybergym.firewall import FirewallProxyManager, load_allowlist
 
-    proxy = ProxyManager(
+    proxy = FirewallProxyManager(
         allowed_domains=load_allowlist("allowlist.txt"),
     )
     proxy.start()
@@ -64,7 +64,7 @@ IP_ALLOWLIST_CONTAINER_PATH = "/etc/squid/allowed_ips.txt"
 SQUID_CONF_TEMPLATE = """\
 # --- CyberGym domain-allowlist proxy ---
 
-acl SSL_ports port 443
+acl SSL_ports port 443 {extra_ports}
 acl Safe_ports port 80 443 {extra_ports}
 acl CONNECT method CONNECT
 
@@ -76,6 +76,7 @@ acl allowed_domains dstdomain "{domain_allowlist_path}"
 http_access deny !Safe_ports
 http_access deny CONNECT !SSL_ports
 http_access allow CONNECT allowed_domains
+{ip_connect_rule}
 http_access allow allowed_domains
 {ip_rule}
 http_access deny all
@@ -112,7 +113,7 @@ def load_allowlist(path: str | Path) -> list[str]:
     return domains
 
 
-class ProxyManager:
+class FirewallProxyManager:
     """Manages a Squid proxy container with network-level enforcement."""
 
     def __init__(
@@ -390,9 +391,11 @@ class ProxyManager:
     def _generate_squid_conf(self) -> str:
         ip_acl = ""
         ip_rule = ""
+        ip_connect_rule = ""
         if self._has_ips():
             ip_acl = f'acl allowed_ips dst "{IP_ALLOWLIST_CONTAINER_PATH}"'
             ip_rule = "http_access allow allowed_ips"
+            ip_connect_rule = "http_access allow CONNECT allowed_ips"
 
         # Allow any port for IP-based destinations
         extra_ports = "1-65535" if self._has_ips() else ""
@@ -401,6 +404,7 @@ class ProxyManager:
             domain_allowlist_path=DOMAIN_ALLOWLIST_CONTAINER_PATH,
             ip_acl=ip_acl,
             ip_rule=ip_rule,
+            ip_connect_rule=ip_connect_rule,
             extra_ports=extra_ports,
             port=self.proxy_port,
         )
@@ -451,7 +455,7 @@ def main():
         if getattr(args, "ip", None):
             kwargs["extra_ips"] = args.ip
 
-    mgr = ProxyManager(**kwargs)
+    mgr = FirewallProxyManager(**kwargs)
 
     match args.action:
         case "start":
