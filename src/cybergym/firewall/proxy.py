@@ -58,7 +58,8 @@ INTERNAL_NETWORK = "cybergym-internal"
 
 DEFAULT_ALLOWLIST_PATH = Path(__file__).with_name("default_allowlist.txt")
 
-ALLOWLIST_CONTAINER_PATH = "/etc/squid/allowed_domains.txt"
+DOMAIN_ALLOWLIST_CONTAINER_PATH = "/etc/squid/allowed_domains.txt"
+IP_ALLOWLIST_CONTAINER_PATH = "/etc/squid/allowed_ips.txt"
 
 SQUID_CONF_TEMPLATE = """\
 # --- CyberGym domain-allowlist proxy ---
@@ -67,16 +68,16 @@ acl SSL_ports port 443
 acl Safe_ports port 80 443 {extra_ports}
 acl CONNECT method CONNECT
 
-# Allowed destinations — loaded from external file
-acl allowed_domains dstdomain "{allowlist_path}"
-{ip_acls}
+# Allowed destinations — loaded from external files
+acl allowed_domains dstdomain "{domain_allowlist_path}"
+{ip_acl}
 
 # Rules
 http_access deny !Safe_ports
 http_access deny CONNECT !SSL_ports
 http_access allow CONNECT allowed_domains
 http_access allow allowed_domains
-{ip_rules}
+{ip_rule}
 http_access deny all
 
 http_port {port}
@@ -117,7 +118,9 @@ class ProxyManager:
     def __init__(
         self,
         allowlist_path: str | Path | None = None,
-        allowed_ips: list[str] | None = None,
+        extra_domains: list[str] | None = None,
+        ip_allowlist_path: str | Path | None = None,
+        extra_ips: list[str] | None = None,
         no_proxy: list[str] | None = None,
         proxy_image: str = PROXY_IMAGE,
         proxy_port: int = PROXY_PORT,
@@ -127,7 +130,15 @@ class ProxyManager:
         self.allowlist_path = Path(allowlist_path or DEFAULT_ALLOWLIST_PATH).resolve()
         if not self.allowlist_path.is_file():
             raise FileNotFoundError(f"Allowlist file not found: {self.allowlist_path}")
-        self.allowed_ips = allowed_ips or []
+        self.extra_domains = extra_domains or []
+        self.ip_allowlist_path = (
+            Path(ip_allowlist_path).resolve() if ip_allowlist_path else None
+        )
+        if self.ip_allowlist_path and not self.ip_allowlist_path.is_file():
+            raise FileNotFoundError(
+                f"IP allowlist file not found: {self.ip_allowlist_path}"
+            )
+        self.extra_ips = extra_ips or []
         self.no_proxy = no_proxy or []
         self.proxy_image = proxy_image
         self.proxy_port = proxy_port
@@ -201,8 +212,8 @@ class ProxyManager:
         gw = self.host_gateway
         if gw not in self.no_proxy:
             self.no_proxy.append(gw)
-        if gw not in self.allowed_ips:
-            self.allowed_ips.append(gw)
+        if gw not in self.extra_ips:
+            self.extra_ips.append(gw)
 
         for local in ["localhost", "127.0.0.1"]:
             if local not in self.no_proxy:
@@ -213,15 +224,15 @@ class ProxyManager:
     def update(self) -> None:
         """Restart the proxy container with the current configuration.
 
-        Useful after modifying the allowlist file on the host. The new
-        container bind-mounts the (possibly updated) allowlist path.
+        Useful after modifying the allowlist files on the host. The new
+        container gets fresh copies of all config files.
         The internal network is preserved so other containers stay connected.
         """
         self.stop()
         self._ensure_network()
         gw = self.host_gateway
-        if gw not in self.allowed_ips:
-            self.allowed_ips.append(gw)
+        if gw not in self.extra_ips:
+            self.extra_ips.append(gw)
         self._ensure_proxy()
 
     def stop(self) -> None:
@@ -280,7 +291,13 @@ class ProxyManager:
 
     def _ensure_network(self) -> None:
         try:
-            self._client.networks.get(self.network_name)
+            net = self._client.networks.get(self.network_name)
+            if not net.attrs.get("Internal", False):
+                raise RuntimeError(
+                    f"Network {self.network_name!r} exists but is not internal. "
+                    "An external network cannot enforce egress isolation. "
+                    "Remove it and let the proxy recreate it, or use a different name."
+                )
         except NotFound:
             # internal=True  →  no default route to the internet
             self._client.networks.create(
@@ -307,17 +324,17 @@ class ProxyManager:
                 name=self.container_name,
             )
 
-            # Copy squid.conf and allowlist into the container
-            self._put_file(
-                proxy,
-                "/etc/squid/squid.conf",
-                self._generate_squid_conf(),
+            # Build merged allowlist contents (file + extra entries)
+            domain_content = self._build_allowlist(
+                self.allowlist_path, self.extra_domains
             )
-            self._put_file(
-                proxy,
-                ALLOWLIST_CONTAINER_PATH,
-                self.allowlist_path.read_text(),
-            )
+            ip_content = self._build_allowlist(self.ip_allowlist_path, self.extra_ips)
+
+            # Copy config files into the container
+            self._put_file(proxy, "/etc/squid/squid.conf", self._generate_squid_conf())
+            self._put_file(proxy, DOMAIN_ALLOWLIST_CONTAINER_PATH, domain_content)
+            if ip_content:
+                self._put_file(proxy, IP_ALLOWLIST_CONTAINER_PATH, ip_content)
 
             proxy.start()
 
@@ -357,20 +374,33 @@ class ProxyManager:
             time.sleep(0.5)
         raise TimeoutError(f"Squid not ready after {timeout}s")
 
+    @staticmethod
+    def _build_allowlist(file_path: Path | None, extra_entries: list[str]) -> str:
+        """Merge a file and extra entries into a single allowlist string."""
+        lines: list[str] = []
+        if file_path:
+            lines.append(file_path.read_text().rstrip("\n"))
+        if extra_entries:
+            lines.extend(extra_entries)
+        return "\n".join(lines) + "\n" if lines else ""
+
+    def _has_ips(self) -> bool:
+        return bool(self.ip_allowlist_path or self.extra_ips)
+
     def _generate_squid_conf(self) -> str:
-        ip_acls = ""
-        ip_rules = ""
-        if self.allowed_ips:
-            ip_acls = "\n".join(f"acl allowed_ips dst {ip}" for ip in self.allowed_ips)
-            ip_rules = "http_access allow allowed_ips"
+        ip_acl = ""
+        ip_rule = ""
+        if self._has_ips():
+            ip_acl = f'acl allowed_ips dst "{IP_ALLOWLIST_CONTAINER_PATH}"'
+            ip_rule = "http_access allow allowed_ips"
 
         # Allow any port for IP-based destinations
-        extra_ports = "1-65535" if self.allowed_ips else ""
+        extra_ports = "1-65535" if self._has_ips() else ""
 
         return SQUID_CONF_TEMPLATE.format(
-            allowlist_path=ALLOWLIST_CONTAINER_PATH,
-            ip_acls=ip_acls,
-            ip_rules=ip_rules,
+            domain_allowlist_path=DOMAIN_ALLOWLIST_CONTAINER_PATH,
+            ip_acl=ip_acl,
+            ip_rule=ip_rule,
             extra_ports=extra_ports,
             port=self.proxy_port,
         )
@@ -387,23 +417,21 @@ def main():
     )
     sub = parser.add_subparsers(dest="action", required=True)
 
-    p_start = sub.add_parser("start", help="Create network and start proxy")
-    p_start.add_argument("--ip", action="append", help="Extra allowed IP/CIDR")
-    p_start.add_argument(
-        "--allowlist",
-        type=Path,
-        help="Path to a domain allowlist file in Squid dstdomain format (default: built-in list)",
-    )
-
-    p_update = sub.add_parser(
-        "update", help="Restart proxy with current allowlist (network preserved)"
-    )
-    p_update.add_argument("--ip", action="append", help="Extra allowed IP/CIDR")
-    p_update.add_argument(
-        "--allowlist",
-        type=Path,
-        help="Path to a domain allowlist file in Squid dstdomain format (default: built-in list)",
-    )
+    # Shared arguments for start/update
+    for p in [
+        sub.add_parser("start", help="Create network and start proxy"),
+        sub.add_parser(
+            "update", help="Restart proxy with current config (network preserved)"
+        ),
+    ]:
+        p.add_argument(
+            "--allowlist",
+            type=Path,
+            help="Domain allowlist file (default: built-in list)",
+        )
+        p.add_argument("--domain", action="append", help="Extra allowed domain")
+        p.add_argument("--ip-allowlist", type=Path, help="IP allowlist file")
+        p.add_argument("--ip", action="append", help="Extra allowed IP/CIDR")
 
     sub.add_parser("stop", help="Stop proxy container")
     sub.add_parser("stop-all", help="Stop proxy and remove network")
@@ -412,15 +440,18 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(format="%(asctime)s [%(name)s] %(message)s", level=logging.INFO)
 
-    allowlist_path: str | Path | None = None
-    ips: list[str] = []
+    kwargs: dict = {}
     if args.action in ("start", "update"):
         if getattr(args, "allowlist", None):
-            allowlist_path = args.allowlist
-        if args.ip:
-            ips.extend(args.ip)
+            kwargs["allowlist_path"] = args.allowlist
+        if getattr(args, "domain", None):
+            kwargs["extra_domains"] = args.domain
+        if getattr(args, "ip_allowlist", None):
+            kwargs["ip_allowlist_path"] = args.ip_allowlist
+        if getattr(args, "ip", None):
+            kwargs["extra_ips"] = args.ip
 
-    mgr = ProxyManager(allowlist_path=allowlist_path, allowed_ips=ips)
+    mgr = ProxyManager(**kwargs)
 
     match args.action:
         case "start":
