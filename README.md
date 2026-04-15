@@ -120,6 +120,25 @@ python3 scripts/verify_agent_result.py \
 # {'agent_id': '8113f33401d34ee3ae48cf823b757ac7', 'task_id': 'arvo:3848', 'poc_id': '8f20a76a34d0482a82da247f96b39f01', 'poc_hash': '714f093fe3c90135c2845fa8bbc7dfa429051e7f91d8ce398b3cd011cea15f59', 'poc_length': 662, 'vul_exit_code': 0, 'fix_exit_code': 0, 'created_at': datetime.datetime(2025, 5, 15, 23, 39, 48, 449451), 'updated_at': datetime.datetime(2025, 5, 15, 23, 39, 49, 435333)}
 ```
 
+### Firewall (Restrict Agent Internet Access)
+CyberGym includes a domain-allowlist proxy that restricts agent containers to approved destinations only. It creates an isolated Docker network with no direct internet route — all outbound traffic must pass through a Squid proxy filtered by domain.
+
+Start the proxy (uses the built-in allowlist for apt, pip, and LLM APIs):
+```bash
+python3 -m cybergym.firewall start
+```
+
+Check status, stop the proxy, or tear down everything:
+```bash
+python3 -m cybergym.firewall status
+python3 -m cybergym.firewall stop       # stop proxy only
+python3 -m cybergym.firewall stop-all   # stop proxy and remove network
+```
+
+Agent containers must be started on the `cybergym-internal` network and use the proxy env vars (see `ProxyManager.env_vars()`). The default allowlist is at `src/cybergym/firewall/default_allowlist.txt`.
+
+See `python3 -m cybergym.firewall --help` for more usage.
+
 ### Example Agents
 The four example agents can be installed as:
 ```bash
