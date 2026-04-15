@@ -16,6 +16,7 @@ from cybergym.server.rate_limiter import RateLimiter
 from cybergym.server.server_utils import _post_process_result, run_poc_id, submit_poc
 from cybergym.server.types import Payload, PocQuery, VerifyPocs, server_conf
 from cybergym.task.mask import load_mask_map
+from cybergym.task.types import verify_task
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -149,6 +150,9 @@ def submit_vul(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
 
     logger.info("submit-vul: agent=%s task=%s file_size=%d", payload.agent_id, payload.task_id, len(file_content))
+
+    if not verify_task(payload.task_id, payload.agent_id, payload.checksum, salt=server_conf.salt):
+        raise HTTPException(status_code=400, detail="Invalid checksum")
 
     rate_limiter.check(payload.agent_id)
 
