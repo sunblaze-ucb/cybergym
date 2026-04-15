@@ -54,7 +54,7 @@ include = [
 
 [tool.ruff]
 # Enable flake8-bugbear (`B`) rules.
-select = ["E", "F", "B", "I", "N", "UP", "S", "A", "C4", "DTZ", "T10", "ISC"]
-ignore = ["E501"]
+lint.select = ["E", "F", "B", "I", "N", "UP", "S", "A", "C4", "DTZ", "T10", "ISC"]
+lint.ignore = ["E501"]
 
 line-length = 120
