@@ -1,0 +1,23 @@
+# Default domain allowlist for the CyberGym proxy.
+# Uses Squid dstdomain format: leading dot matches the domain and all subdomains.
+# Lines starting with # are comments.
+
+# apt install
+archive.ubuntu.com
+security.ubuntu.com
+ppa.launchpadcontent.net
+api.launchpad.net
+launchpad.net
+old-releases.ubuntu.com
+
+# pip install
+pypi.org
+files.pythonhosted.org
+pypi.python.org
+bootstrap.pypa.io
+
+# llm apis
+api.openai.com
+api.anthropic.com
+generativelanguage.googleapis.com
+api.together.xyz
