@@ -63,7 +63,7 @@ Start the PoC submission server:
 PORT=8666 # port of the server
 POC_SAVE_DIR=./server_poc # dir to save the pocs
 python3 -m cybergym.server \
-    --host 0.0.0.0 --port $PORT \
+    --host 0.0.0.0 --port $PORT --mask_map_path mask_map.json \
     --log_dir $POC_SAVE_DIR --db_path $POC_SAVE_DIR/poc.db
 ```
 
@@ -73,7 +73,7 @@ PORT=8666 # port of the server
 POC_SAVE_DIR=./server_poc # dir to save the pocs
 CYBERGYM_SERVER_DATA_DIR=./cybergym-server-data
 python3 -m cybergym.server \
-    --host 0.0.0.0 --port $PORT \
+    --host 0.0.0.0 --port $PORT --mask_map_path mask_map.json \
     --log_dir $POC_SAVE_DIR --db_path $POC_SAVE_DIR/poc.db \
     --binary_dir $CYBERGYM_SERVER_DATA_DIR
 ```
@@ -91,6 +91,7 @@ python3 -m cybergym.task.gen_task \
     --out-dir $OUT_DIR \
     --data-dir $CYBERGYM_DATA_DIR \
     --server "http://$SERVER_IP:$SERVER_PORT" \
+    --mask-map mask_map.json \
     --difficulty level1
 
 # ./cybergym_tmp
