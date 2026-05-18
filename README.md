@@ -151,14 +151,12 @@ Then check the instructions in the folder: [Example Agents](examples/agents/READ
 ## Citation
 If you use this project in your research, please cite:
 ```
-@misc{wang2025cybergym,
-      title={CyberGym: Evaluating AI Agents' Cybersecurity Capabilities with Real-World Vulnerabilities at Scale}, 
-      author={Zhun Wang and Tianneng Shi and Jingxuan He and Matthew Cai and Jialin Zhang and Dawn Song},
-      year={2025},
-      eprint={2506.02548},
-      archivePrefix={arXiv},
-      primaryClass={cs.CR},
-      url={https://arxiv.org/abs/2506.02548}, 
+@inproceedings{wang2026cybergym,
+    title={CyberGym: Evaluating {AI} Agents' Real-World Cybersecurity Capabilities at Scale},
+    author={Zhun Wang and Tianneng Shi and Jingxuan He and Matthew Cai and Jialin Zhang and Dawn Song},
+    booktitle={The Fourteenth International Conference on Learning Representations},
+    year={2026},
+    url={https://openreview.net/forum?id=2YvbLQEdYt}
 }
 ```
 
