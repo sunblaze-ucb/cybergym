@@ -7,6 +7,10 @@
 
 CyberGym is a large-scale, high-quality cybersecurity evaluation framework designed to rigorously assess the capabilities of AI agents on real-world vulnerability analysis tasks.
 
+> [!NOTE]
+> - **[FAQ.md](FAQ.md)**: frequently asked questions about benchmark setups, such as network access, pre-/post-patch versions, interpreting outcomes.
+> - **[SUBMISSION.md](SUBMISSION.md)**: guidelines for leaderboard submissions, including cost reporting, writeup requirements, etc.
+
 ## Installation
 Require python and docker environment.
 
