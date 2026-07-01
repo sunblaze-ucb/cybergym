@@ -6,7 +6,7 @@ A submission must include the following:
 
 ## 1. Report
 
-Submit a structured report by email along with your results. All per-model token, cost, time, and request values are **averages per task** over the evaluated task set.
+Submit a structured report by email along with your results and artifacts.
 
 ### Schema
 
