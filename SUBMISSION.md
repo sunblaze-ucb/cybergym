@@ -6,7 +6,8 @@ A submission must include the following:
 
 ## 1. Report
 
-Submit a structured report by email or GitHub issue along with your results and artifacts.
+Submit a structured report by [email](mailto:zhun.wang@berkeley.edu) or GitHub issue along with your results and artifacts.
+To better show your result on the plot, please also submit an icon for your system.
 
 ### Schema
 
