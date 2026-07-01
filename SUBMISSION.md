@@ -6,7 +6,7 @@ A submission must include the following:
 
 ## 1. Report
 
-Submit a structured report by email along with your results and artifacts.
+Submit a structured report by email or GitHub issue along with your results and artifacts.
 
 ### Schema
 
