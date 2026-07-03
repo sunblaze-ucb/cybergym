@@ -1,6 +1,7 @@
 # CyberGym Submission Guidelines (2026-06-30)
 
 The most capable models under unconstrained resources have nearly saturated the benchmark. Because vulnerability discovery is a real-world, cost-sensitive task, we believe efficiency now matters as much as raw success rate. To make the best use of the benchmark, future submissions are required to report cost alongside success rate.
+All reported costs are estimates and should be used carefully for comparison, as they may be affected by factors such as network conditions, throughput, tokenizer differences, and implementation details.
 
 A submission must include the following:
 
