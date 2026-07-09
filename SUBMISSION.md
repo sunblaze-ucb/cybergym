@@ -1,4 +1,4 @@
-# CyberGym Submission Guidelines (2026-06-30)
+# CyberGym Submission Guidelines (2026-07-08)
 
 The most capable models under unconstrained resources have nearly saturated the benchmark. Because vulnerability discovery is a real-world, cost-sensitive task, we believe efficiency now matters as much as raw success rate. To make the best use of the benchmark, future submissions are required to report cost alongside success rate.
 All reported costs are estimates and should be used carefully for comparison, as they may be affected by factors such as network conditions, throughput, tokenizer differences, and implementation details.
@@ -17,6 +17,7 @@ To better show your result on the plot, please also submit an icon for your syst
 | `agent_name` | Name/version of the agent scaffold. |
 | `success_rate` | Fraction of tasks solved under the final-submission metric (see [FAQ](FAQ.md)). |
 | `link` | URL of the public writeup, paper, or blog post. |
+| `category` | The evaluation can be either model- or agent-focused; by model-focused, we mean it is designed to evaluate the model's underlying capability without relying on specialized agent design. |
 | `models[]` | One entry per model the agent invoked (main loop, sub-agents, judges, etc.). |
 | `models[].name` | Model identifier. |
 | `models[].input_tokens` | Avg non-cached input tokens per task. |
@@ -33,6 +34,7 @@ To better show your result on the plot, please also submit an icon for your syst
 agent_name: my-agent
 success_rate: 0.40
 link: https://example.com/writeup
+category: model
 models:
   - name: claude-opus-4-8
     input_tokens: 120000
