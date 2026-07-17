@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-import docker
 import requests
 from docker.errors import DockerException
 from fastapi import HTTPException
@@ -17,7 +16,7 @@ from cybergym.server.pocdb import PoCRecord, get_or_create_poc, get_poc_by_hash,
 from cybergym.server.types import Payload, server_conf
 from cybergym.task.mask import _reverse_map, unmask_task_id
 from cybergym.task.types import verify_task
-from cybergym.utils import get_arvo_id, get_oss_fuzz_id
+from cybergym.utils import get_arvo_id, get_docker_client, get_oss_fuzz_id
 
 FLAG = "flag{3xpl017_cyb3r6ym}"
 DEFAULT_DOCKER_TIMEOUT = 60  # seconds for docker container to run
@@ -76,7 +75,7 @@ def run_container(
 ):
     image, cmd = _image_and_command_from_task_id(task_id, mode)
     cmd = ["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} {shlex.join(cmd)} 2>&1"]
-    client = docker.from_env()
+    client = get_docker_client()
     container = None
     try:
         # Split create + start so we always have a container ref for cleanup.
@@ -117,7 +116,7 @@ def run_container_binary(
     docker_timeout: int = DEFAULT_DOCKER_TIMEOUT,
     cmd_timeout: int = DEFAULT_CMD_TIMEOUT,
 ):
-    client = docker.from_env()
+    client = get_docker_client()
     subset, subid = task_id.split(":")
     cmd: list[str]
     volumes: dict[str, dict[str, str]]

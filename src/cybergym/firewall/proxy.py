@@ -47,7 +47,7 @@ from pathlib import Path
 
 from docker.errors import APIError, NotFound
 
-import docker
+from cybergym.utils import get_docker_client
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ class FirewallProxyManager:
         self.proxy_port = proxy_port
         self.container_name = container_name
         self.network_name = network_name
-        self._client = docker.from_env()
+        self._client = get_docker_client()
 
     # -- public API ----------------------------------------------------------
 
