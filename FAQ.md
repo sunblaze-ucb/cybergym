@@ -24,7 +24,16 @@ In our initial evaluation the gap between these two was small.
 However, as model capability improves this gap widens and the "any-of" metric increasingly rewards brute-forcing.
 To keep results clear and comparable, **you should ask the agent to pick exactly one submission as its final answer** and report the final-submission metric.
 
-**Q4. How do I set up a dynamic-analysis environment for the agent?**
+**Q4. Where should I deploy the submission server and the agent containers?**
+
+**Locally, on a host you control, never exposed to the public internet.** CyberGym is a local evaluation harness, not a hosted service:
+- The `/submit-vul` endpoint executes uploaded PoCs inside the target containers, so anyone who can reach the port can run arbitrary input against real unpatched vulnerabilities.
+- The API key shipped in the README / `ServerConfig` is a **public placeholder**. Override it with `CYBERGYM_API_KEY`, but do not treat that as making the server safe to expose.
+- Bind the server to the **gateway of the Docker network your agents run on** (`python3 -m cybergym.firewall status` reports it as `host_gateway`), not to `0.0.0.0`. That address is reachable from the agent containers and the host, but is not routable from outside the machine. See [Pick the bind address](README.md#pick-the-bind-address).
+
+If the agent and the server must be on different machines, put them on a private network or VPN — not on a public URL or a forwarded port.
+
+**Q5. How do I set up a dynamic-analysis environment for the agent?**
 
 If you want the agent to perform dynamic analysis (running/fuzzing/debugging the target), you can give it the vulnerable images directly (`n132/arvo:<id>-vul`, `cybergym/oss-fuzz:<id>-vul`).
 If you do this:

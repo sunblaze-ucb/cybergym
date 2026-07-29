@@ -8,8 +8,11 @@
 CyberGym is a large-scale, high-quality cybersecurity evaluation framework designed to rigorously assess the capabilities of AI agents on real-world vulnerability analysis tasks.
 
 > [!NOTE]
-> - **[FAQ.md](FAQ.md)**: frequently asked questions about benchmark setups, such as network access, pre-/post-patch versions, interpreting outcomes.
+> - **[FAQ.md](FAQ.md)**: frequently asked questions about benchmark setups, such as network access, local deployment, pre-/post-patch versions, interpreting outcomes.
 > - **[SUBMISSION.md](SUBMISSION.md)**: guidelines for leaderboard submissions, including cost reporting, writeup requirements, etc.
+
+> [!WARNING]
+> **Deploy everything locally. Do not expose any part of CyberGym to the public internet.**
 
 ## Installation
 Require python and docker environment.
@@ -62,12 +65,38 @@ python scripts/server_data/download_subset.py
 
 
 ## Evaluation
+
+The server only needs to be reachable from the agent containers and from the host. `0.0.0.0` binds every interface, which on a machine with a public IP exposes a partly unauthenticated service to the internet.
+
+### Pick the bind address
+
+The right address is the **gateway of the Docker network your agent containers run on** — that address is a host-side interface reachable from those containers and from the host, but not routable from outside the machine.
+
+```bash
+# If you use the firewall (agents on the isolated `cybergym-internal` network):
+HOST=$(docker network inspect cybergym-internal -f '{{(index .IPAM.Config 0).Gateway}}')
+
+# If agents run on the default bridge instead (no firewall):
+HOST=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+
+# If the agent runs directly on the host with no container at all:
+HOST=127.0.0.1
+
+echo $HOST  # e.g. 192.168.48.1 for cybergym-internal, 172.17.0.1 for the default bridge
+```
+
+Notes:
+- The two gateways are **not interchangeable**. `cybergym-internal` is created with `internal=True`, so containers on it have no route to the default bridge — a server bound to `172.17.0.1` is unreachable from firewalled agents.
+- Docker assigns the `cybergym-internal` subnet when the network is created, so the gateway is host-specific. Query it rather than hardcoding it. `python3 -m cybergym.firewall start` and `status` both print it as `host_gateway`.
+- `FirewallProxyManager.start()` already adds this gateway to `NO_PROXY` and to the proxy's IP allowlist, so agent traffic to the server bypasses Squid.
+- Use the same `$HOST` value in `--server` when generating tasks and verifying PoCs below.
+
 Start the PoC submission server:
 ```bash
 PORT=8666 # port of the server
 POC_SAVE_DIR=./server_poc # dir to save the pocs
 python3 -m cybergym.server \
-    --host 0.0.0.0 --port $PORT --mask_map_path mask_map.json \
+    --host $HOST --port $PORT --mask_map_path mask_map.json \
     --log_dir $POC_SAVE_DIR --db_path $POC_SAVE_DIR/poc.db
 ```
 
@@ -77,7 +106,7 @@ PORT=8666 # port of the server
 POC_SAVE_DIR=./server_poc # dir to save the pocs
 CYBERGYM_SERVER_DATA_DIR=./cybergym-server-data
 python3 -m cybergym.server \
-    --host 0.0.0.0 --port $PORT --mask_map_path mask_map.json \
+    --host $HOST --port $PORT --mask_map_path mask_map.json \
     --log_dir $POC_SAVE_DIR --db_path $POC_SAVE_DIR/poc.db \
     --binary_dir $CYBERGYM_SERVER_DATA_DIR
 ```
@@ -85,7 +114,7 @@ python3 -m cybergym.server \
 Test:
 ```bash
 # generate the task
-SERVER_IP= # server ip
+SERVER_IP=$HOST # server ip — same bind address chosen above
 SERVER_PORT=8666 # server port
 TASK_ID='arvo:10400'
 OUT_DIR=./cybergym_tmp
@@ -115,6 +144,8 @@ bash $OUT_DIR/submit.sh $OUT_DIR/poc
 After running the agent, you can get the `agent_id` from the `logs/args.json`.
 You can verify the PoCs submitted by:
 ```bash
+# NOTE: this is the public default placeholder key. Set your own via CYBERGYM_API_KEY
+# on both the server and the client. It is not a substitute for keeping the server private.
 export CYBERGYM_API_KEY=cybergym-030a0cd7-5908-4862-8ab9-91f2bfc7b56d
 python3 scripts/verify_agent_result.py \
     --server http://$SERVER_IP:$SERVER_PORT \
@@ -141,6 +172,8 @@ python3 -m cybergym.firewall stop-all   # stop proxy and remove network
 ```
 
 Agent containers must be started on the `cybergym-internal` network and use the proxy env vars (see `ProxyManager.env_vars()`). The default allowlist is at `src/cybergym/firewall/default_allowlist.txt`.
+
+Note that the firewall only filters **outbound** traffic from agent containers. It does nothing about inbound reachability of the submission server — that is still up to how you bind and firewall the host.
 
 See `python3 -m cybergym.firewall --help` for more usage.
 

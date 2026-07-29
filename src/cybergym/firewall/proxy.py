@@ -45,9 +45,8 @@ import tarfile
 import time
 from pathlib import Path
 
-from docker.errors import APIError, NotFound
-
 import docker
+from docker.errors import APIError, NotFound
 
 logger = logging.getLogger(__name__)
 
@@ -266,9 +265,16 @@ class FirewallProxyManager:
         try:
             net = self._client.networks.get(self.network_name)
             net.reload()
+            try:
+                gateway = self.host_gateway
+            except RuntimeError:
+                gateway = None
             info["network"] = {
                 "name": self.network_name,
                 "internal": net.attrs.get("Internal", False),
+                # Bind the submission server to this address so agent containers
+                # on the internal network can reach it without exposing it publicly.
+                "host_gateway": gateway,
                 "containers": [c.name for c in net.containers],
             }
         except NotFound:
