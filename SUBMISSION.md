@@ -48,7 +48,9 @@ models:
 
 ## 2. Artifacts
 
-Include example trajectories, logs, and PoC submissions for at least 10 tasks so we can review the agent's behavior. For every task, also report the `vul_exit_code` and `fix_exit_code` of the final submitted PoC. We also encourage including these artifacts in the public writeup.
+Include example trajectories, logs, and PoC submissions for at least 10 tasks so we can review the agent's behavior.
+Please also report the `vul_exit_code` and `fix_exit_code` of the final submitted PoC for all instances (not only the examples).
+We also encourage including these artifacts in the public writeup.
 
 ## 3. Detailed writeup
 
