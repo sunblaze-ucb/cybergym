@@ -1,4 +1,4 @@
-# CyberGym Submission Guidelines (2026-07-08)
+# CyberGym Submission Guidelines (2026-08-04)
 
 The most capable models under unconstrained resources have nearly saturated the benchmark. Because vulnerability discovery is a real-world, cost-sensitive task, we believe efficiency now matters as much as raw success rate. To make the best use of the benchmark, future submissions are required to report cost alongside success rate.
 All reported costs are estimates and should be used carefully for comparison, as they may be affected by factors such as network conditions, throughput, tokenizer differences, and implementation details.
@@ -48,7 +48,7 @@ models:
 
 ## 2. Artifacts
 
-Include example trajectories, logs, and PoC submissions for at least 10 tasks so we can review the agent's behavior, along with the detailed success/failure status for each instance. We also encourage including these artifacts in the public writeup.
+Include example trajectories, logs, and PoC submissions for at least 10 tasks so we can review the agent's behavior. For every task, also report the `vul_exit_code` and `fix_exit_code` of the final submitted PoC. We also encourage including these artifacts in the public writeup.
 
 ## 3. Detailed writeup
 
