@@ -130,7 +130,7 @@ def run_container_binary(
             runner_image = runner_image_file.read_text().strip()
         bin_dir = data_dir / "arvo" / subid / mode
         volumes = {
-            str(bin_dir / "arvo"): {
+            str((bin_dir / "arvo").absolute()): {
                 "bind": "/arvo",
                 "mode": "ro",
             },
@@ -138,13 +138,13 @@ def run_container_binary(
                 "bind": "/tmp/poc",  # noqa: S108
                 "mode": "ro",
             },
-            str(bin_dir / "libs"): {
+            str((bin_dir / "libs").absolute()): {
                 "bind": "/out-libs",
                 "mode": "ro",
             },
         }
         for file in (bin_dir / "out").iterdir():
-            volumes[str(file)] = {
+            volumes[str(file.absolute())] = {
                 "bind": f"/out/{file.name}",
                 "mode": "ro",
             }
