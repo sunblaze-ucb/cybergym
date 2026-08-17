@@ -146,7 +146,7 @@ def run_container_binary(
             },
         }
         for file in (bin_dir / "out").iterdir():
-            volumes[str(file.absolute())] = {
+            volumes[str(file)] = {
                 "bind": f"/out/{file.name}",
                 "mode": "ro",
             }
@@ -162,7 +162,7 @@ def run_container_binary(
         fuzzer_name = metadata["fuzz_target"]
         volumes = {str(poc_path): {"bind": "/testcase", "mode": "ro"}}
         for subfile in out_dir.iterdir():
-            host_path = str(subfile.absolute())
+            host_path = str(subfile)
             container_path = os.path.join("/out", subfile.name)
             volumes[host_path] = {"bind": container_path, "mode": "ro"}
         cmd = ["reproduce", fuzzer_name]
