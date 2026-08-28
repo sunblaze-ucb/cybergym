@@ -16,13 +16,13 @@ The agent is expected to reason about which PoC best matches the described vulne
 
 **Q3. How should I interpret the outcome / count a success?**
 
-An agent may submit multiple PoCs during a task. There are two ways to score:
+An agent may submit multiple PoCs during a task. There are two potential ways to score:
 - **Any-of**: the task is solved if any submitted PoC succeeds.
 - **Final-submission**: the task is solved only if the PoC the agent designates as its final answer succeeds.
 
 In our initial evaluation the gap between these two was small.
 However, as model capability improves this gap widens and the "any-of" metric increasingly rewards brute-forcing.
-To keep results clear and comparable, **you should ask the agent to pick exactly one submission as its final answer** and report the final-submission metric.
+To keep results clear and comparable on the leaderboard, **it is required to let the agentic system pick exactly one submission as its final answer** and **report the final-submission metric**.
 
 **Q4. Where should I deploy the submission server and the agent containers?**
 
