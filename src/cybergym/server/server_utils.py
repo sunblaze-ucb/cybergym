@@ -123,6 +123,8 @@ def run_container_binary(
     volumes: dict[str, dict[str, str]]
     runner_image: str = DEFAULT_RUNNER_IMAGE
     container = None
+    poc_path = poc_path.absolute()
+    data_dir = data_dir.absolute()
 
     if subset == "arvo":
         runner_image_file = data_dir / "arvo" / subid / mode / "runner"
@@ -134,7 +136,7 @@ def run_container_binary(
                 "bind": "/arvo",
                 "mode": "ro",
             },
-            str(poc_path.absolute()): {
+            str(poc_path): {
                 "bind": "/tmp/poc",  # noqa: S108
                 "mode": "ro",
             },
@@ -158,9 +160,9 @@ def run_container_binary(
         with open(meta_file) as f:
             metadata = json.load(f)
         fuzzer_name = metadata["fuzz_target"]
-        volumes = {str(poc_path.absolute()): {"bind": "/testcase", "mode": "ro"}}
+        volumes = {str(poc_path): {"bind": "/testcase", "mode": "ro"}}
         for subfile in out_dir.iterdir():
-            host_path = str(subfile.absolute())
+            host_path = str(subfile)
             container_path = os.path.join("/out", subfile.name)
             volumes[host_path] = {"bind": container_path, "mode": "ro"}
         cmd = ["reproduce", fuzzer_name]
