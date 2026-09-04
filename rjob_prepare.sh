@@ -15,6 +15,7 @@ prepare_rjob_docker() {
   }
 
   mkdir -p /var/run "$docker_root"
+  mkdir -p "$(dirname "$docker_log")"
   rm -f /var/run/docker.sock
 
   if [[ -f "$RJOB_DAEMON_CONFIG" ]]; then
@@ -65,6 +66,7 @@ PY
     cybergym_log "CyberGym DinD started with unexpected storage driver: ${storage_driver}"
     return 1
   fi
+  cybergym_log "CyberGym DinD ready: driver=${storage_driver} root=${docker_root}"
 }
 
 cleanup_rjob_docker() {

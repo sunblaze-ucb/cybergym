@@ -94,18 +94,23 @@ def prepare(request_path: Path, output_path: Path, env_path: Path) -> None:
         "image_archive_dir",
         "CYBERGYM_IMAGE_ARCHIVE_DIR",
     )
-    openhands_runner = configured_path(
-        dataset,
-        env_params,
-        "openhands_runner",
-        "CYBERGYM_OPENHANDS_RUNNER",
+    agent_type = first_text(dataset.get("agent_type"), env_params.get("agent_type"), "openhands").lower()
+    if agent_type not in {"claude_code", "codex", "opencode", "openhands"}:
+        raise RuntimeError(f"Unsupported CyberGym agent_type: {agent_type}")
+    default_runner_key = f"{agent_type}_runner"
+    agent_runner_value = first_text(
+        dataset.get("agent_runner"), env_params.get("agent_runner"),
+        dataset.get(default_runner_key), env_params.get(default_runner_key),
+        os.environ.get(f"CYBERGYM_{agent_type.upper()}_RUNNER"),
     )
-    openhands_repo = configured_path(
-        dataset,
-        env_params,
-        "openhands_repo",
-        "CYBERGYM_OPENHANDS_REPO",
+    if not agent_runner_value:
+        raise RuntimeError(f"Missing CyberGym runner for agent_type={agent_type}")
+    agent_runner = Path(agent_runner_value).expanduser()
+    openhands_repo_value = first_text(
+        dataset.get("openhands_repo"), env_params.get("openhands_repo"),
+        os.environ.get("CYBERGYM_OPENHANDS_REPO"),
     )
+    openhands_repo = Path(openhands_repo_value).expanduser() if openhands_repo_value else None
     result_dir = results_dir(request, env_params, dataset)
     server_dir = result_dir / "server"
     logs_dir = result_dir / "logs"
@@ -117,7 +122,8 @@ def prepare(request_path: Path, output_path: Path, env_path: Path) -> None:
         cybergym_root=cybergym_root,
         data_dir=data_dir,
         image_archive_dir=image_archive_dir,
-        openhands_runner=openhands_runner,
+        agent_type=agent_type,
+        agent_runner=agent_runner,
         openhands_repo=openhands_repo,
     )
 
@@ -158,8 +164,9 @@ def prepare(request_path: Path, output_path: Path, env_path: Path) -> None:
         "logs_dir": str(logs_dir),
         "tmp_dir": str(tmp_dir),
         "db_path": str(server_dir / "poc.db"),
-        "openhands_runner": str(openhands_runner),
-        "openhands_repo": str(openhands_repo),
+        "agent_type": agent_type,
+        "agent_runner": str(agent_runner),
+        "openhands_repo": str(openhands_repo) if openhands_repo else "",
         "agent_image": agent_image,
         "agent_image_archive": agent_image_archive,
         "model_ref": model_ref(request, env_params, dataset),
@@ -234,8 +241,9 @@ def validate_runtime_paths(
     cybergym_root: Path,
     data_dir: Path,
     image_archive_dir: Path,
-    openhands_runner: Path,
-    openhands_repo: Path,
+    agent_type: str,
+    agent_runner: Path,
+    openhands_repo: Path | None,
 ) -> None:
     checks = (
         (cybergym_root.is_dir(), f"CyberGym root does not exist: {cybergym_root}"),
@@ -244,23 +252,23 @@ def validate_runtime_paths(
             image_archive_dir.is_dir(),
             f"CyberGym image archive directory does not exist: {image_archive_dir}",
         ),
-        (
-            openhands_runner.is_file(),
-            f"OpenHands CyberGym runner does not exist: {openhands_runner}",
-        ),
-        (
-            (openhands_runner.parent / "template" / "config.toml").is_file(),
-            f"OpenHands CyberGym template does not exist next to {openhands_runner}",
-        ),
-        (openhands_repo.is_dir(), f"OpenHands repository does not exist: {openhands_repo}"),
-        (
-            (openhands_repo / "Makefile").is_file(),
-            f"OpenHands repository is not populated or built: {openhands_repo}",
-        ),
+        (agent_runner.is_file(), f"CyberGym {agent_type} runner does not exist: {agent_runner}"),
     )
     for valid, message in checks:
         if not valid:
             raise RuntimeError(message)
+    if agent_type == "openhands":
+        extra_checks = (
+            ((agent_runner.parent / "template" / "config.toml").is_file(),
+             f"OpenHands template does not exist next to {agent_runner}"),
+            (openhands_repo is not None and openhands_repo.is_dir(),
+             f"OpenHands repository does not exist: {openhands_repo}"),
+            (openhands_repo is not None and (openhands_repo / "Makefile").is_file(),
+             f"OpenHands repository is not populated or built: {openhands_repo}"),
+        )
+        for valid, message in extra_checks:
+            if not valid:
+                raise RuntimeError(message)
 
 
 def write_env(path: Path, settings: dict[str, Any]) -> None:
@@ -276,7 +284,8 @@ def write_env(path: Path, settings: dict[str, Any]) -> None:
         "EPISODE_LOGS_DIR": settings["logs_dir"],
         "EPISODE_TMP_DIR": settings["tmp_dir"],
         "EPISODE_DB_PATH": settings["db_path"],
-        "EPISODE_OPENHANDS_RUNNER": settings["openhands_runner"],
+        "EPISODE_AGENT_TYPE": settings["agent_type"],
+        "EPISODE_AGENT_RUNNER": settings["agent_runner"],
         "EPISODE_OPENHANDS_REPO": settings["openhands_repo"],
         "EPISODE_AGENT_IMAGE": settings["agent_image"],
         "EPISODE_AGENT_IMAGE_ARCHIVE": settings["agent_image_archive"],
