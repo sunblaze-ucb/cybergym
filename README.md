@@ -70,10 +70,10 @@ The server only needs to be reachable from the agent containers and from the hos
 
 ### Pick the bind address
 
-The right address is the **gateway of the Docker network your agent containers run on** — that address is a host-side interface reachable from those containers and from the host, but not routable from outside the machine.
+The right address is the **gateway of the Docker infrastructure network** — that address is a host-side interface reachable from those containers and from the host, but not routable from outside the machine.
 
 ```bash
-# If you use the firewall (agents on the isolated `cybergym-internal` network):
+# If you use the firewall (submission traffic goes through the proxy):
 HOST=$(docker network inspect cybergym-internal -f '{{(index .IPAM.Config 0).Gateway}}')
 
 # If agents run on the default bridge instead (no firewall):
@@ -88,7 +88,7 @@ echo $HOST  # e.g. 192.168.48.1 for cybergym-internal, 172.17.0.1 for the defaul
 Notes:
 - The two gateways are **not interchangeable**. `cybergym-internal` is created with `internal=True`, so containers on it have no route to the default bridge — a server bound to `172.17.0.1` is unreachable from firewalled agents.
 - Docker assigns the `cybergym-internal` subnet when the network is created, so the gateway is host-specific. Query it rather than hardcoding it. `python3 -m cybergym.firewall start` and `status` both print it as `host_gateway`.
-- `FirewallProxyManager.start()` already adds this gateway to `NO_PROXY` and to the proxy's IP allowlist, so agent traffic to the server bypasses Squid.
+- `FirewallProxyManager.start()` adds this gateway to the proxy IP allowlist. Inside `trial_network()`, it is removed from `NO_PROXY`: agents reach this submission endpoint through Squid. Pass `proxy.env_vars()` to the agent inside that context; do not set `NO_PROXY=*`.
 - Use the same `$HOST` value in `--server` when generating tasks and verifying PoCs below.
 
 Start the PoC submission server:
@@ -171,7 +171,34 @@ python3 -m cybergym.firewall stop       # stop proxy only
 python3 -m cybergym.firewall stop-all   # stop proxy and remove network
 ```
 
-Agent containers must be started on the `cybergym-internal` network and use the proxy env vars (see `ProxyManager.env_vars()`). The default allowlist is at `src/cybergym/firewall/default_allowlist.txt`.
+Each trial must use its own internal bridge. `cybergym-internal` is now infrastructure only, with inter-container communication disabled. Use one manager instance per concurrent trial:
+
+```python
+import docker
+from cybergym.firewall import FirewallProxyManager
+
+proxy = FirewallProxyManager()
+proxy.connect()  # infrastructure was started once with the CLI
+with proxy.trial_network() as network:
+    agent = docker.from_env().containers.run(
+        "your-agent-image", detach=True, network=network,
+        environment=proxy.env_vars(),
+    )
+    try:
+        agent.wait()  # run the evaluation before leaving the context
+    finally:
+        agent.remove(force=True)
+```
+
+The context disconnects remaining endpoints and removes its network on success or failure. The shared proxy disables IP forwarding and denies every trial subnet before checking allowlists, including for CONNECT. Normal allowlisted outbound requests and submissions to the infrastructure gateway remain available.
+
+**Upgrade:** stop running evaluations, run `python3 -m cybergym.firewall stop-all`, then `python3 -m cybergym.firewall start`. Re-query the infrastructure gateway and restart the submission server if its address changed. Update agent launchers to use `trial_network()`; attaching agents directly to `cybergym-internal` no longer supports proxy access. Existing unsafe networks are rejected rather than silently reused.
+
+Trial subnets are allocated from `198.18.0.0/15`. If it overlaps host/VPN/service routing, set `CYBERGYM_TRIAL_NETWORK_POOL` to an unused IPv4 pool of size /29 or larger for **both** the proxy CLI and all workers, then update the proxy. This entire pool is denied as a proxy destination. The default allowlist is at `src/cybergym/firewall/default_allowlist.txt`.
+
+This isolates Docker trial networks, not shared host services, mounted files, or communication through an explicitly allowed external service. Docker firewall rules must remain enabled.
+
+Regression tests: `PYTHONPATH=src python -m pytest tests -q`; include real Docker/Squid checks with `CYBERGYM_DOCKER_TESTS=1` (requires `python:3.12-slim` and `ubuntu/squid:latest`).
 
 Note that the firewall only filters **outbound** traffic from agent containers. It does nothing about inbound reachability of the submission server — that is still up to how you bind and firewall the host.
 

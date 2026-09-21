@@ -22,6 +22,7 @@ build-backend = "hatchling.build"
 dev = [
     # Add your development dependencies here
     "ruff>=0.8.0",
+    "pytest>=8.0",
     "docker>=7.1.0",
     "httpx>=0.28.1",
     "openai>=1.75.0",
@@ -58,3 +59,6 @@ lint.select = ["E", "F", "B", "I", "N", "UP", "S", "A", "C4", "DTZ", "T10", "ISC
 lint.ignore = ["E501"]
 
 line-length = 120
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S108"]

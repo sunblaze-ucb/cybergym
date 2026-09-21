@@ -8,7 +8,7 @@ ignores HTTP_PROXY, direct connections fail because there is no route out.
 
 Architecture
 ------------
-    Agent ──(cybergym-internal, no internet)──▶ Squid ──(bridge)──▶ Internet
+    Agent ──(private trial bridge, no internet)──▶ Squid ──(bridge)──▶ Internet
                                                        filtered by domain
 
 Usage
@@ -20,20 +20,23 @@ Usage
     )
     proxy.start()
 
-    # The host is reachable at proxy.host_gateway (internal bridge gateway).
-    # This IP is auto-added to NO_PROXY so containers bypass the proxy for it.
+    # Bind the submission server to the infrastructure gateway.
+    # trial_network() routes agent requests to this address through Squid.
     server_url = f"http://{proxy.host_gateway}:13338"
 
-    # Create agent container on the internal network:
-    container = client.containers.run(
-        image=..., detach=True,
-        network=proxy.network_name,
-    )
+    # The shared infrastructure network is not an agent network.
+    # Use a separate manager instance per concurrent trial.
+    with proxy.trial_network() as network:
+        container = client.containers.run(
+            image=..., detach=True, network=network,
+            environment=proxy.env_vars(),
+        )
+        try:
+            ...  # run the agent
+        finally:
+            container.remove(force=True)
 
-    # Merge proxy env vars into docker exec:
-    envs.update(proxy.env_vars())
-
-    # Cleanup (optional — proxy is shared across runs):
+    # Cleanup shared infrastructure after all trials finish:
     proxy.stop()
 """
 
@@ -41,9 +44,13 @@ import argparse
 import io
 import json
 import logging
+import os
 import tarfile
 import time
+from contextlib import contextmanager
+from ipaddress import ip_network
 from pathlib import Path
+from uuid import uuid4
 
 import docker
 from docker.errors import APIError, NotFound
@@ -54,6 +61,9 @@ PROXY_CONTAINER_NAME = "cybergym-proxy"
 PROXY_IMAGE = "ubuntu/squid:latest"
 PROXY_PORT = 3128
 INTERNAL_NETWORK = "cybergym-internal"
+PROXY_SYSCTLS = {"net.ipv4.ip_forward": "0", "net.ipv6.conf.all.forwarding": "0"}
+TRIAL_POOL_LABEL = "cybergym.trial-pool"
+ICC_OPTION = "com.docker.network.bridge.enable_icc"
 
 DEFAULT_ALLOWLIST_PATH = Path(__file__).with_name("default_allowlist.txt")
 
@@ -71,7 +81,11 @@ acl CONNECT method CONNECT
 acl allowed_domains dstdomain "{domain_allowlist_path}"
 {ip_acl}
 
+# Trial addresses are never valid proxy destinations, even with a broad allowlist.
+acl trial_networks dst {trial_pool}
+
 # Rules
+http_access deny trial_networks
 http_access deny !Safe_ports
 http_access deny CONNECT !SSL_ports
 http_access allow CONNECT allowed_domains
@@ -144,6 +158,11 @@ class FirewallProxyManager:
         self.proxy_port = proxy_port
         self.container_name = container_name
         self.network_name = network_name
+        self.trial_pool = ip_network(
+            os.environ.get("CYBERGYM_TRIAL_NETWORK_POOL", "198.18.0.0/15")
+        )
+        if self.trial_pool.version != 4 or self.trial_pool.prefixlen > 29:
+            raise ValueError("CYBERGYM_TRIAL_NETWORK_POOL must be an IPv4 /29 or larger")
         self._client = docker.from_env()
 
     # -- public API ----------------------------------------------------------
@@ -185,6 +204,7 @@ class FirewallProxyManager:
         """
         # Verify infrastructure is up
         self._client.networks.get(self.network_name)
+        self._ensure_network()
         c = self._client.containers.get(self.container_name)
         if c.status != "running":
             raise RuntimeError(
@@ -220,6 +240,85 @@ class FirewallProxyManager:
                 self.no_proxy.append(local)
 
         self._ensure_proxy()
+
+    @contextmanager
+    def trial_network(self):
+        """Give one trial a private bridge. Use a separate manager per concurrent trial."""
+        proxy = self._client.containers.get(self.container_name)
+        sysctls = proxy.attrs.get("HostConfig", {}).get("Sysctls") or {}
+        if any(sysctls.get(key) != value for key, value in PROXY_SYSCTLS.items()):
+            raise RuntimeError(
+                f"Proxy {self.container_name!r} must disable IP forwarding. "
+                "Run 'python -m cybergym.firewall update' first."
+            )
+        labels = proxy.attrs.get("Config", {}).get("Labels") or {}
+        if labels.get(TRIAL_POOL_LABEL) != str(self.trial_pool):
+            raise RuntimeError(
+                "Proxy trial-network deny policy is missing or uses a different pool. "
+                "Stop evaluations and update the proxy with the same "
+                "CYBERGYM_TRIAL_NETWORK_POOL as the evaluator."
+            )
+        original_network, original_no_proxy = self.network_name, self.no_proxy
+        original_gateway = self.host_gateway
+        net = self._create_trial_network()
+        try:
+            net.connect(proxy)
+            self.network_name = net.name
+            # Old gateway URLs still work through Squid's existing IP allowlist.
+            self.no_proxy = [ip for ip in original_no_proxy if ip != original_gateway]
+            self.no_proxy.append(self.host_gateway)
+            yield net.name
+        finally:
+            self.network_name, self.no_proxy = original_network, original_no_proxy
+            self._cleanup_trial_network(net)
+
+    def _create_trial_network(self):
+        # Docker atomically reserves each /29; retry collisions between workers.
+        for attempt in range(16):
+            token = uuid4()
+            offset = (token.int % (self.trial_pool.num_addresses // 8)) * 8
+            address = self.trial_pool.network_address + offset
+            pool = docker.types.IPAMPool(
+                subnet=f"{address}/29", gateway=str(address + 1)
+            )
+            try:
+                return self._client.networks.create(
+                    f"{self.network_name}-{token.hex}",
+                    driver="bridge",
+                    internal=True,
+                    enable_ipv6=False,
+                    ipam=docker.types.IPAMConfig(pool_configs=[pool]),
+                )
+            except APIError as exc:
+                if "Pool overlaps" not in str(exc) or attempt == 15:
+                    raise
+
+    @staticmethod
+    def _cleanup_trial_network(net):
+        # Use endpoint IDs, avoiding races when a container has already vanished.
+        endpoints = []
+        try:
+            net.reload()
+            endpoints = list(net.attrs.get("Containers", {}))
+        except NotFound:
+            return
+        except Exception as exc:
+            logger.warning("Could not inspect trial network %s: %s", net.name, exc)
+        for endpoint in endpoints:
+            try:
+                net.disconnect(endpoint, force=True)
+            except NotFound:
+                pass
+            except Exception as exc:
+                logger.warning(
+                    "Could not disconnect %s from %s: %s", endpoint, net.name, exc
+                )
+        try:
+            net.remove()
+        except NotFound:
+            pass
+        except Exception as exc:
+            logger.warning("Trial network %s needs manual cleanup: %s", net.name, exc)
 
     def update(self) -> None:
         """Restart the proxy container with the current configuration.
@@ -305,10 +404,17 @@ class FirewallProxyManager:
                     "An external network cannot enforce egress isolation. "
                     "Remove it and let the proxy recreate it, or use a different name."
                 )
+            if net.attrs.get("Options", {}).get(ICC_OPTION) != "false":
+                raise RuntimeError(
+                    "Legacy shared agent network detected. Stop evaluations, run "
+                    "'python -m cybergym.firewall stop-all', then 'start', and use "
+                    "trial_network() for every agent."
+                )
         except NotFound:
             # internal=True  →  no default route to the internet
             self._client.networks.create(
-                self.network_name, driver="bridge", internal=True
+                self.network_name, driver="bridge", internal=True,
+                options={ICC_OPTION: "false"}
             )
             logger.info("Created internal network %s", self.network_name)
 
@@ -329,6 +435,8 @@ class FirewallProxyManager:
             proxy = self._client.containers.create(
                 image=self.proxy_image,
                 name=self.container_name,
+                sysctls=PROXY_SYSCTLS,
+                labels={TRIAL_POOL_LABEL: str(self.trial_pool)},
             )
 
             # Build merged allowlist contents (file + extra entries)
@@ -413,6 +521,7 @@ class FirewallProxyManager:
             ip_connect_rule=ip_connect_rule,
             extra_ports=extra_ports,
             port=self.proxy_port,
+            trial_pool=self.trial_pool,
         )
 
 
