@@ -86,6 +86,7 @@ def run_container(
             image=image,
             command=cmd,
             network_mode="none",
+            security_opt=["seccomp=unconfined"],
             volumes={str(poc_path.absolute()): {"bind": "/tmp/poc", "mode": "ro"}},  # noqa: S108
         )
         container.start()
@@ -172,6 +173,7 @@ def run_container_binary(
             image=runner_image,
             command=["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} {shlex.join(cmd)} 2>&1"],
             network_mode="none",
+            security_opt=["seccomp=unconfined"],
             volumes=volumes,
         )
         container.start()
