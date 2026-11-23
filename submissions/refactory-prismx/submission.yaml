@@ -1,0 +1,13 @@
+agent_name: refactory-prismx
+success_rate: 0.9071
+link: https://github.com/gx-ai-architect/CyberGym-Writeup
+category: agent
+models:
+  - name: zai-org/GLM-5.3
+    input_tokens: 439403
+    cache_read_tokens: 6460347
+    cache_creation_tokens: 0
+    output_tokens: 67657
+    est_usd_cost: 2.59
+    time_cost_sec: 5931
+    llm_requests: 86
