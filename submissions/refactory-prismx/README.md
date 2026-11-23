@@ -2,8 +2,6 @@
 
 > Patch-guided differential crash analysis for automated vulnerability exploitation
 
-**Formerly:** `adversarial-patch-agent-v1`
-
 ## Result
 
 | Metric | Value |
